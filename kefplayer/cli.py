@@ -9,6 +9,7 @@ import urllib.parse
 from pathlib import Path
 
 from . import __version__, audio, dsp, upnp
+import soundfile as sf
 from .mediaserver import MediaServer, local_ip_for
 from .player import Player, collect_files
 from .runlog import RunLog
@@ -365,7 +366,7 @@ def main(argv=None) -> int:
         except OSError:
             pass
         return 0
-    except (ValueError, FileNotFoundError, upnp.UpnpError) as e:
+    except (ValueError, FileNotFoundError, sf.SoundFileError, upnp.UpnpError) as e:
         _err(f"Fehler: {e}")
         return 2
     except OSError as e:

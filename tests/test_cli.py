@@ -63,6 +63,17 @@ def test_process_bad_profile_returns_2(tone_factory, tmp_path, capsys):
     assert "Fehler" in capsys.readouterr().err
 
 
+
+def test_process_corrupt_audio_returns_2(tmp_path, capsys):
+    src = tmp_path / "broken.flac"
+    src.write_bytes(b"not a valid audio file")
+
+    rc = cli.main(["process", str(src), "--out", str(tmp_path / "out")])
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "Fehler" in err
+    assert "Traceback" not in err
 def test_response_command(tmp_path, capsys):
     prof = write_profile(tmp_path, {"filters": [{"type": "peq", "fc": 2000, "gain_db": 4, "q": 2}]})
     assert cli.main(["response", "--profile", str(prof), "--fs", "48000"]) == 0
