@@ -30,7 +30,7 @@
 ### Bekannte Einschränkungen
 
 - Wie bei 0.2.0: Es wurde **kein echter KEF-Lautsprecher** getestet, die Hardware-Validierung ist frühestens ab März 2027 vorgesehen. Die übrigen Einschränkungen von 0.2.0 (siehe unten) gelten unverändert.
-- Windows: 628 Tests, davon 616 bestanden und 12 übersprungen (siehe oben; Python-Version und Bibliotheksversionen für diesen Lauf nicht festgehalten, Prüfziel CPython 3.12.10). Der Lauf erfolgte vor der Anhebung der Version, vor dem Entfernen vereinzelter CR-Zeichen und einer zusätzlichen Leerzeile am Dateiende in `kefplayer/cli.py`, `tests/test_cli.py` und `tests/test_audio_edge_cases.py` und vor der Berichtigung eines Satzes in der Modulbeschreibung von `tests/test_audio_edge_cases.py`. Mit dem veröffentlichten Stand wurde unter Windows nicht erneut getestet.
+- Windows: 628 Tests, davon 616 bestanden und 12 übersprungen (siehe oben; Python-Version und Bibliotheksversionen für diesen Lauf nicht festgehalten, Prüfziel CPython 3.12.10). Der Lauf erfolgte vor der Anhebung der Version, vor dem Entfernen vereinzelter CR-Zeichen und einer zusätzlichen Leerzeile am Dateiende in `kefplayer/cli.py`, `tests/test_cli.py` und `tests/test_audio_edge_cases.py` und vor der Berichtigung eines Satzes in der Modulbeschreibung von `tests/test_audio_edge_cases.py`. Nachtrag nach der Veröffentlichung: Mit dem Release-ZIP v0.2.1 wurde unter Windows erneut getestet (CPython 3.12.10, 616 bestanden, 12 übersprungen, 0 fehlgeschlagen, siehe README).
 - Linux: 628 Tests bestanden auf CPython 3.10, 3.11, 3.12 und 3.13 vor diesen Änderungen. Mit dem veröffentlichten Stand wurde nur CPython 3.12.3 ausgeführt.
 - Keine Windows-EXE enthalten.
 
