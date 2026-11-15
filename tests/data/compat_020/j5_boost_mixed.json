@@ -1,0 +1,23 @@
+{
+  "name": "compat-j5",
+  "preamp_db": "auto",
+  "filters": [
+    {"type": "highshelf", "fc": 6000, "gain_db": 2.5, "q": 0.7}
+  ],
+  "channels": {
+    "L": {
+      "gain_db": 0.5,
+      "filters": [
+        {"type": "peq", "fc": 300, "gain_db": 4.2, "q": 2.0}
+      ]
+    },
+    "R": {
+      "gain_db": -0.5,
+      "delay_ms": 0.8,
+      "filters": [
+        {"type": "lowshelf", "fc": 120, "gain_db": 3.1, "q": 0.8},
+        {"type": "peq", "fc": 900, "gain_db": -2.0, "q": 1.5}
+      ]
+    }
+  }
+}

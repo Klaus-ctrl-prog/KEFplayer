@@ -1,0 +1,13 @@
+Preamp: -2 dB
+Channel: ALL
+Filter 1: ON PK Fc 1000 Hz Gain -1 dB Q 2
+Channel: L
+Filter 2: ON PK Fc 90 Hz Gain -6 dB Q 8
+Delay: 0.3 ms
+Channel: R
+Filter 3: ON PK Fc 140 Hz Gain -3 dB Q 4
+Delay: 1,25 ms
+Channel: L R
+Filter 4: ON PK Fc 4500 Hz Gain -1.5 dB Q 3
+Channel: all
+Filter 5: ON HS Fc 10000 Hz Gain -1 dB Q 0.7

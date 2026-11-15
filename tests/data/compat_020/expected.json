@@ -1,0 +1,1454 @@
+{
+ "_meta": {
+  "erzeugt_mit": "kefplayer 0.2.0",
+  "quell_commit": "8788254c4e3b6f4c4d8cc5657eaf784bb903ff45",
+  "quell_arbeitsverzeichnis_veraendert": false,
+  "hinweis": "Verhalten von 0.2.0, nicht aus dem aktuellen Stand erzeugen. Siehe make_expected.py."
+ },
+ "profiles": {
+  "j1_common_only.json": {
+   "to_dict": {
+    "name": "compat-j1",
+    "preamp_db": "auto",
+    "filters": [
+     {
+      "type": "peq",
+      "fc": 63.0,
+      "gain_db": -4.0,
+      "q": 5.0
+     },
+     {
+      "type": "peq",
+      "fc": 2500.0,
+      "gain_db": -2.0,
+      "q": 3.0
+     },
+     {
+      "type": "highshelf",
+      "fc": 8000.0,
+      "gain_db": -1.5,
+      "q": 0.7
+     },
+     {
+      "type": "lowpass",
+      "fc": 18000.0,
+      "q": 0.7071
+     }
+    ]
+   },
+   "is_neutral": false,
+   "notes": [],
+   "validate": [
+    "Filter peq bei 63 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Filter peq bei 2500 Hz (-2 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter highshelf bei 8000 Hz (-1.5 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern."
+   ],
+   "response_db_48000": {
+    "L": [
+     -0.02055492378445773,
+     -0.6341925212347467,
+     -0.17286034440180498,
+     -0.012331156242659253,
+     -0.049868982248159756,
+     -0.9085323748677325,
+     -0.7857057782078993,
+     -2.501177523068498
+    ],
+    "R": [
+     -0.02055492378445773,
+     -0.6341925212347467,
+     -0.17286034440180498,
+     -0.012331156242659253,
+     -0.049868982248159756,
+     -0.9085323748677325,
+     -0.7857057782078993,
+     -2.501177523068498
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11025,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.5833934965939287,
+     "warnings": [],
+     "rms": [
+      0.25854489983306034,
+      0.2271884226378257
+     ],
+     "peak": [
+      0.5833934965939287,
+      0.5180524410719325
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24000,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.5816830218903625,
+     "warnings": [],
+     "rms": [
+      0.25833226476407856,
+      0.22651057787822548
+     ],
+     "peak": [
+      0.5816830218903625,
+      0.5149080472085843
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.5846868816708675,
+     "warnings": [],
+     "rms": [
+      0.2585241609520586
+     ],
+     "peak": [
+      0.5846868816708675
+     ]
+    }
+   }
+  },
+  "j2_channels.json": {
+   "to_dict": {
+    "name": "compat-j2",
+    "preamp_db": "auto",
+    "filters": [
+     {
+      "type": "peq",
+      "fc": 3000.0,
+      "gain_db": -1.5,
+      "q": 2.0
+     }
+    ],
+    "channels": {
+     "L": {
+      "gain_db": -1.0,
+      "delay_ms": 0.0,
+      "filters": [
+       {
+        "type": "peq",
+        "fc": 120.0,
+        "gain_db": -5.0,
+        "q": 6.0
+       },
+       {
+        "type": "lowshelf",
+        "fc": 100.0,
+        "gain_db": 2.0,
+        "q": 0.7
+       }
+      ]
+     },
+     "R": {
+      "gain_db": 0.5,
+      "delay_ms": 0.35,
+      "filters": [
+       {
+        "type": "highpass",
+        "fc": 25.0,
+        "q": 0.7071
+       },
+       {
+        "type": "peq",
+        "fc": 1700.0,
+        "gain_db": -3.0,
+        "q": 4.0
+       }
+      ]
+     }
+    }
+   },
+   "is_neutral": false,
+   "notes": [],
+   "validate": [
+    "Filter peq bei 3000 Hz (-1.5 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter peq bei 120 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Filter lowshelf bei 100 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Boost +2 dB bei 100 Hz: vorher pruefen, dass dort kein Einbruch durch Ausloeschung (SBIR, Raummoden-Knoten, Interferenz) liegt. Solche Einbrueche lassen sich nicht wegentzerren.",
+    "Filter highpass bei 25 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Filter peq bei 1700 Hz (-3 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Kanalunterschiede (Pegel, Delay, Filter je Seite) wirken nur auf diesen Signalweg (PC -> DLNA). TV (optisch), Bluetooth und andere KEF-Quellen bleiben unveraendert."
+   ],
+   "response_db_48000": {
+    "L": [
+     0.9908286950573606,
+     0.8360211653467511,
+     -0.881989776883448,
+     -1.015349610844072,
+     -1.0513277630905407,
+     -2.50018275133573,
+     -1.0554674374148048,
+     -1.0050890840941606
+    ],
+    "R": [
+     -4.867481611783324,
+     0.2364077440311652,
+     0.4819894429287851,
+     0.46975053882228857,
+     0.3049019261927927,
+     -1.1232823339309375,
+     0.4368449795893683,
+     0.4941111314602597
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11040,
+      2
+     ],
+     "preamp_db": -1.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      15
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.5010975501921698,
+     "warnings": [],
+     "rms": [
+      0.21522061704892592,
+      0.21206187667324047
+     ],
+     "peak": [
+      0.48500844543814237,
+      0.5010975501921698
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24034,
+      2
+     ],
+     "preamp_db": -1.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      34
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.5021770471417396,
+     "warnings": [],
+     "rms": [
+      0.21518940433241543,
+      0.21187394016928068
+     ],
+     "peak": [
+      0.4867228780038325,
+      0.5021770471417396
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": -1.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.4868812841234493,
+     "warnings": [
+      "Profil enthaelt Kanal 1, Datei hat nur 1 Kanal/Kanaele: ignoriert"
+     ],
+     "rms": [
+      0.21536189944624717
+     ],
+     "peak": [
+      0.4868812841234493
+     ]
+    }
+   }
+  },
+  "j3_manual_preamp_delay.json": {
+   "to_dict": {
+    "name": "compat-j3",
+    "preamp_db": 6.0,
+    "filters": [],
+    "channels": {
+     "L": {
+      "gain_db": 0.0,
+      "delay_ms": 1.0,
+      "filters": []
+     },
+     "R": {
+      "gain_db": -2.0,
+      "delay_ms": 2.5,
+      "filters": []
+     }
+    }
+   },
+   "is_neutral": false,
+   "notes": [],
+   "validate": [
+    "Kanalunterschiede (Pegel, Delay, Filter je Seite) wirken nur auf diesen Signalweg (PC -> DLNA). TV (optisch), Bluetooth und andere KEF-Quellen bleiben unveraendert.",
+    "Preamp +6 dB ist positiv: Clipping-Gefahr."
+   ],
+   "response_db_48000": {
+    "L": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "R": [
+     -2.0,
+     -2.0,
+     -2.0,
+     -2.0,
+     -2.0,
+     -2.0,
+     -2.0,
+     -2.0
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11135,
+      2
+     ],
+     "preamp_db": 6.0,
+     "guard_gain_db": -1.548093113704552,
+     "delay_samples": [
+      44,
+      110
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.9999998807907104,
+     "warnings": [
+      "Manueller Preamp +6.00 dB liegt ueber dem noetigen Headroom +0.00 dB: Clipping moeglich",
+      "Clipping-Schutz: Stueck um 1.55 dB abgesenkt (Spitze +1.55 dBFS)"
+     ],
+     "rms": [
+      0.43957142135672195,
+      0.3134362990491471
+     ],
+     "peak": [
+      0.9999998807907104,
+      0.728424460157932
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24240,
+      2
+     ],
+     "preamp_db": 6.0,
+     "guard_gain_db": -1.5281900559978565,
+     "delay_samples": [
+      96,
+      240
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.9999998807907104,
+     "warnings": [
+      "Manueller Preamp +6.00 dB liegt ueber dem noetigen Headroom +0.00 dB: Clipping moeglich",
+      "Clipping-Schutz: Stueck um 1.53 dB abgesenkt (Spitze +1.53 dBFS)"
+     ],
+     "rms": [
+      0.44058742783975363,
+      0.3141574835560846
+     ],
+     "peak": [
+      0.9999998807907104,
+      0.7284043314026638
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12048,
+      1
+     ],
+     "preamp_db": 6.0,
+     "guard_gain_db": -1.5281900559978565,
+     "delay_samples": [
+      48
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.9999998807907104,
+     "warnings": [
+      "Profil enthaelt Kanal 1, Datei hat nur 1 Kanal/Kanaele: ignoriert",
+      "Manueller Preamp +6.00 dB liegt ueber dem noetigen Headroom +0.00 dB: Clipping moeglich",
+      "Clipping-Schutz: Stueck um 1.53 dB abgesenkt (Spitze +1.53 dBFS)"
+     ],
+     "rms": [
+      0.44189121452422514
+     ],
+     "peak": [
+      0.9999998807907104
+     ]
+    }
+   }
+  },
+  "j4_aliases_bom.json": {
+   "to_dict": {
+    "name": "j4_aliases_bom",
+    "preamp_db": -1.0,
+    "filters": [
+     {
+      "type": "peq",
+      "fc": 500.0,
+      "gain_db": -2.0,
+      "q": 1.0
+     },
+     {
+      "type": "peq",
+      "fc": 4000.0,
+      "gain_db": -1.0,
+      "q": 2.0
+     }
+    ],
+    "channels": {
+     "L": {
+      "gain_db": 0.0,
+      "delay_ms": 0.0,
+      "filters": [
+       {
+        "type": "lowshelf",
+        "fc": 200.0,
+        "gain_db": -2.0,
+        "q": 0.7
+       }
+      ]
+     },
+     "R": {
+      "gain_db": 0.0,
+      "delay_ms": 0.0,
+      "filters": [
+       {
+        "type": "highshelf",
+        "fc": 6000.0,
+        "gain_db": -2.0,
+        "q": 0.7
+       },
+       {
+        "type": "lowpass",
+        "fc": 15000.0,
+        "q": 0.7071
+       },
+       {
+        "type": "highpass",
+        "fc": 40.0,
+        "q": 0.7071
+       }
+      ]
+     }
+    }
+   },
+   "is_neutral": false,
+   "notes": [],
+   "validate": [
+    "Filter peq bei 500 Hz (-2 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter peq bei 4000 Hz (-1 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter lowshelf bei 200 Hz (-2 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter highshelf bei 6000 Hz (-2 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter highpass bei 40 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Kanalunterschiede (Pegel, Delay, Filter je Seite) wirken nur auf diesen Signalweg (PC -> DLNA). TV (optisch), Bluetooth und andere KEF-Quellen bleiben unveraendert."
+   ],
+   "response_db_48000": {
+    "L": [
+     -2.002626618904361,
+     -2.0100281255662535,
+     -1.9570530493712237,
+     -2.060125557493867,
+     -0.6368128300199044,
+     -0.4624557664620117,
+     -0.0871004204092608,
+     -0.0069777853303882404
+    ],
+    "R": [
+     -12.307793888382559,
+     -1.5114269797359943,
+     -0.19374282986781122,
+     -2.004353156449655,
+     -0.634299176759005,
+     -0.5733117576996464,
+     -1.752220117383298,
+     -6.460369475023965
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11025,
+      2
+     ],
+     "preamp_db": -1.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.4665023698716347,
+     "warnings": [],
+     "rms": [
+      0.20108303705668004,
+      0.20283650729983388
+     ],
+     "peak": [
+      0.4665023698716347,
+      0.45908947949956247
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24000,
+      2
+     ],
+     "preamp_db": -1.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.4653306105716781,
+     "warnings": [],
+     "rms": [
+      0.20102701828066838,
+      0.20207221018673327
+     ],
+     "peak": [
+      0.4653306105716781,
+      0.4548094456552907
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": -1.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.4655738967836718,
+     "warnings": [
+      "Profil enthaelt Kanal 1, Datei hat nur 1 Kanal/Kanaele: ignoriert"
+     ],
+     "rms": [
+      0.20107199551990035
+     ],
+     "peak": [
+      0.4655738967836718
+     ]
+    }
+   }
+  },
+  "j5_boost_mixed.json": {
+   "to_dict": {
+    "name": "compat-j5",
+    "preamp_db": "auto",
+    "filters": [
+     {
+      "type": "highshelf",
+      "fc": 6000.0,
+      "gain_db": 2.5,
+      "q": 0.7
+     }
+    ],
+    "channels": {
+     "L": {
+      "gain_db": 0.5,
+      "delay_ms": 0.0,
+      "filters": [
+       {
+        "type": "peq",
+        "fc": 300.0,
+        "gain_db": 4.2,
+        "q": 2.0
+       }
+      ]
+     },
+     "R": {
+      "gain_db": -0.5,
+      "delay_ms": 0.8,
+      "filters": [
+       {
+        "type": "lowshelf",
+        "fc": 120.0,
+        "gain_db": 3.1,
+        "q": 0.8
+       },
+       {
+        "type": "peq",
+        "fc": 900.0,
+        "gain_db": -2.0,
+        "q": 1.5
+       }
+      ]
+     }
+    }
+   },
+   "is_neutral": false,
+   "notes": [],
+   "validate": [
+    "Filter highshelf bei 6000 Hz (+2.5 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Boost +2.5 dB bei 6000 Hz: vorher pruefen, dass dort kein Einbruch durch Ausloeschung (SBIR, Raummoden-Knoten, Interferenz) liegt. Solche Einbrueche lassen sich nicht wegentzerren.",
+    "Filter peq bei 300 Hz (+4.2 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Boost +4.2 dB bei 300 Hz: vorher pruefen, dass dort kein Einbruch durch Ausloeschung (SBIR, Raummoden-Knoten, Interferenz) liegt. Solche Einbrueche lassen sich nicht wegentzerren.",
+    "Filter lowshelf bei 120 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Boost +3.1 dB bei 120 Hz: vorher pruefen, dass dort kein Einbruch durch Ausloeschung (SBIR, Raummoden-Knoten, Interferenz) liegt. Solche Einbrueche lassen sich nicht wegentzerren.",
+    "Filter peq bei 900 Hz (-2 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Kanalunterschiede (Pegel, Delay, Filter je Seite) wirken nur auf diesen Signalweg (PC -> DLNA). TV (optisch), Bluetooth und andere KEF-Quellen bleiben unveraendert."
+   ],
+   "response_db_48000": {
+    "L": [
+     0.5048871847779733,
+     0.5318071802586697,
+     0.6476542163341785,
+     1.2717431542048738,
+     0.6176406018410158,
+     0.6484937063000412,
+     2.4625965315615983,
+     2.988986257235823
+    ],
+    "R": [
+     2.616243973243649,
+     2.6212366178685356,
+     1.7112542550609953,
+     -0.9756100696066312,
+     -2.321990310108432,
+     -0.45377485980143284,
+     1.4516968366206489,
+     1.9877904582410433
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11060,
+      2
+     ],
+     "preamp_db": -4.71,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      35
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.3893283114600439,
+     "warnings": [],
+     "rms": [
+      0.16827608301609745,
+      0.1440290047553631
+     ],
+     "peak": [
+      0.3893283114600439,
+      0.3355461029876412
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24077,
+      2
+     ],
+     "preamp_db": -4.71,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      77
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.38812118009636754,
+     "warnings": [],
+     "rms": [
+      0.16813967018581513,
+      0.14387344512316916
+     ],
+     "peak": [
+      0.38812118009636754,
+      0.3359264926194054
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": -4.71,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.38813413861007373,
+     "warnings": [
+      "Profil enthaelt Kanal 1, Datei hat nur 1 Kanal/Kanaele: ignoriert"
+     ],
+     "rms": [
+      0.16851482882853683
+     ],
+     "peak": [
+      0.38813413861007373
+     ]
+    }
+   }
+  },
+  "a1_rew_export.txt": {
+   "to_dict": {
+    "name": "a1_rew_export",
+    "preamp_db": -3.5,
+    "filters": [
+     {
+      "type": "peq",
+      "fc": 62.9,
+      "gain_db": -4.1,
+      "q": 5.2
+     },
+     {
+      "type": "peq",
+      "fc": 118.0,
+      "gain_db": -2.4,
+      "q": 3.1
+     },
+     {
+      "type": "lowshelf",
+      "fc": 90.0,
+      "gain_db": -1.5,
+      "q": 0.8
+     },
+     {
+      "type": "highshelf",
+      "fc": 9000.0,
+      "gain_db": -2.0,
+      "q": 0.7
+     },
+     {
+      "type": "lowpass",
+      "fc": 19000.0,
+      "q": 0.7071067811865476
+     },
+     {
+      "type": "highpass",
+      "fc": 22.0,
+      "q": 0.7071
+     }
+    ]
+   },
+   "is_neutral": false,
+   "notes": [
+    "Zeile 6: Shelf LS: Fc- und Q-Definition gegen Equalizer APO/REW nicht verifiziert, Frequenzgang vor Nutzung vergleichen",
+    "Zeile 7: Shelf HS: Fc- und Q-Definition gegen Equalizer APO/REW nicht verifiziert, Frequenzgang vor Nutzung vergleichen"
+   ],
+   "validate": [
+    "Filter peq bei 62.9 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Filter peq bei 118 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Filter lowshelf bei 90 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Filter highshelf bei 9000 Hz (-2 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter highpass bei 22 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden."
+   ],
+   "response_db_48000": {
+    "L": [
+     -5.4567197165841295,
+     -2.2979477148622998,
+     -1.8895352088085136,
+     -0.009196034484834255,
+     -0.002249526235980972,
+     -0.01949968785175189,
+     -0.7288002418098177,
+     -2.440890564140517
+    ],
+    "R": [
+     -5.4567197165841295,
+     -2.2979477148622998,
+     -1.8895352088085136,
+     -0.009196034484834255,
+     -0.002249526235980972,
+     -0.01949968785175189,
+     -0.7288002418098177,
+     -2.440890564140517
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11025,
+      2
+     ],
+     "preamp_db": -3.5,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.36189570638461976,
+     "warnings": [],
+     "rms": [
+      0.1553152952417015,
+      0.13967169581456357
+     ],
+     "peak": [
+      0.36189570638461976,
+      0.32854497980266445
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24000,
+      2
+     ],
+     "preamp_db": -3.5,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.35961903925495015,
+     "warnings": [],
+     "rms": [
+      0.1551266542185671,
+      0.13940347555306137
+     ],
+     "peak": [
+      0.35961903925495015,
+      0.3267027077115886
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": -3.5,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.36180442812276753,
+     "warnings": [],
+     "rms": [
+      0.15529149994937178
+     ],
+     "peak": [
+      0.36180442812276753
+     ]
+    }
+   }
+  },
+  "a2_channels_delay.txt": {
+   "to_dict": {
+    "name": "a2_channels_delay",
+    "preamp_db": -2.0,
+    "filters": [
+     {
+      "type": "peq",
+      "fc": 1000.0,
+      "gain_db": -1.0,
+      "q": 2.0
+     },
+     {
+      "type": "peq",
+      "fc": 4500.0,
+      "gain_db": -1.5,
+      "q": 3.0
+     },
+     {
+      "type": "highshelf",
+      "fc": 10000.0,
+      "gain_db": -1.0,
+      "q": 0.7
+     }
+    ],
+    "channels": {
+     "L": {
+      "gain_db": 0.0,
+      "delay_ms": 0.3,
+      "filters": [
+       {
+        "type": "peq",
+        "fc": 90.0,
+        "gain_db": -6.0,
+        "q": 8.0
+       }
+      ]
+     },
+     "R": {
+      "gain_db": 0.0,
+      "delay_ms": 1.25,
+      "filters": [
+       {
+        "type": "peq",
+        "fc": 140.0,
+        "gain_db": -3.0,
+        "q": 4.0
+       }
+      ]
+     }
+    }
+   },
+   "is_neutral": false,
+   "notes": [
+    "Zeile 13: Shelf HS: Fc- und Q-Definition gegen Equalizer APO/REW nicht verifiziert, Frequenzgang vor Nutzung vergleichen"
+   ],
+   "validate": [
+    "Filter peq bei 1000 Hz (-1 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter peq bei 4500 Hz (-1.5 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter highshelf bei 10000 Hz (-1 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern.",
+    "Filter peq bei 90 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Filter peq bei 140 Hz liegt im Bassbereich (< 150 Hz): wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF beeinflussen (an echter Hardware nicht geprüft). Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden.",
+    "Kanalunterschiede (Pegel, Delay, Filter je Seite) wirken nur auf diesen Signalweg (PC -> DLNA). TV (optisch), Bluetooth und andere KEF-Quellen bleiben unveraendert."
+   ],
+   "response_db_48000": {
+    "L": [
+     -0.005637540924306023,
+     -0.06529971573901298,
+     -1.602812405789496,
+     -0.1053760699054885,
+     -1.0095891162095538,
+     -0.23193957383663127,
+     -0.3339348887233801,
+     -0.9651013434339437
+    ],
+    "R": [
+     -0.004164614846019834,
+     -0.032341751029816734,
+     -0.3592939876126705,
+     -0.11940531249675591,
+     -1.0126402591406398,
+     -0.23225803641917067,
+     -0.33397253108229136,
+     -0.9651055238146615
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11080,
+      2
+     ],
+     "preamp_db": -2.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      13,
+      55
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.4345494884834798,
+     "warnings": [],
+     "rms": [
+      0.1697763385922891,
+      0.16281155296374117
+     ],
+     "peak": [
+      0.4345494884834798,
+      0.40629494412983735
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24120,
+      2
+     ],
+     "preamp_db": -2.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      29,
+      120
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.43478153807061115,
+     "warnings": [],
+     "rms": [
+      0.1696407522938334,
+      0.16281511913330526
+     ],
+     "peak": [
+      0.43478153807061115,
+      0.4054623588625618
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12014,
+      1
+     ],
+     "preamp_db": -2.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      14
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.42718043177215864,
+     "warnings": [
+      "Profil enthaelt Kanal 1, Datei hat nur 1 Kanal/Kanaele: ignoriert"
+     ],
+     "rms": [
+      0.17007190263970146
+     ],
+     "peak": [
+      0.42718043177215864
+     ]
+    }
+   }
+  },
+  "a3_minimal.txt": {
+   "to_dict": {
+    "name": "a3_minimal",
+    "preamp_db": "auto",
+    "filters": [
+     {
+      "type": "peq",
+      "fc": 1000.0,
+      "gain_db": -3.0,
+      "q": 2.0
+     }
+    ]
+   },
+   "is_neutral": false,
+   "notes": [],
+   "validate": [
+    "Filter peq bei 1000 Hz (-3 dB): oberhalb ca. 150 Hz nur auf Basis ueber mehrere Positionen gemittelter Messungen, Kammfilter nicht wegfiltern."
+   ],
+   "response_db_48000": {
+    "L": [
+     -0.0003053384088432259,
+     -0.0019153281346695416,
+     -0.007761902210385866,
+     -0.30332053495283223,
+     -2.9999999999999916,
+     -0.10087826303005873,
+     -0.010082986468297084,
+     -0.001098193336846645
+    ],
+    "R": [
+     -0.0003053384088432259,
+     -0.0019153281346695416,
+     -0.007761902210385866,
+     -0.30332053495283223,
+     -2.9999999999999916,
+     -0.10087826303005873,
+     -0.010082986468297084,
+     -0.001098193336846645
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11025,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.5413498052668357,
+     "warnings": [],
+     "rms": [
+      0.24489438371031563,
+      0.2344839328303534
+     ],
+     "peak": [
+      0.5403424742387355,
+      0.5413498052668357
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24000,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.5413740055934395,
+     "warnings": [],
+     "rms": [
+      0.24489494639101742,
+      0.23445008960557848
+     ],
+     "peak": [
+      0.539032212232657,
+      0.5413740055934395
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.539072827044326,
+     "warnings": [],
+     "rms": [
+      0.24489419841048102
+     ],
+     "peak": [
+      0.539072827044326
+     ]
+    }
+   }
+  },
+  "examples/neutral.json": {
+   "to_dict": {
+    "name": "neutral",
+    "preamp_db": "auto",
+    "filters": []
+   },
+   "is_neutral": true,
+   "notes": [],
+   "validate": [],
+   "response_db_48000": {
+    "L": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "R": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11025,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.5989693559848028,
+     "warnings": [],
+     "rms": [
+      0.26460004664156594,
+      0.23752523584024762
+     ],
+     "peak": [
+      0.5989693559848028,
+      0.5492741699497903
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24000,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.5975984343893356,
+     "warnings": [],
+     "rms": [
+      0.2646075855920857,
+      0.237529524422075
+     ],
+     "peak": [
+      0.5975984343893356,
+      0.5480018472347854
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.5975984343893356,
+     "warnings": [],
+     "rms": [
+      0.26460114941559887
+     ],
+     "peak": [
+      0.5975984343893356
+     ]
+    }
+   }
+  },
+  "examples/test_tiefpass_500.json": {
+   "to_dict": {
+    "name": "test-tiefpass-500",
+    "preamp_db": "auto",
+    "filters": [
+     {
+      "type": "lowpass",
+      "fc": 500.0,
+      "q": 0.7071
+     }
+    ]
+   },
+   "is_neutral": false,
+   "notes": [],
+   "validate": [],
+   "response_db_48000": {
+    "L": [
+     -1.1368448542629637e-05,
+     -0.0004353238250530831,
+     -0.006940301518023152,
+     -3.0103832551201566,
+     -12.322061907649754,
+     -31.34831258089333,
+     -49.85627193048459,
+     -68.94107730636533
+    ],
+    "R": [
+     -1.1368448542629637e-05,
+     -0.0004353238250530831,
+     -0.006940301518023152,
+     -3.0103832551201566,
+     -12.322061907649754,
+     -31.34831258089333,
+     -49.85627193048459,
+     -68.94107730636533
+    ]
+   },
+   "apply": {
+    "stereo_44100": {
+     "shape": [
+      11025,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5989693559848028,
+     "peak_out": 0.3471008947257124,
+     "warnings": [],
+     "rms": [
+      0.21419394451687468,
+      0.17674318414289353
+     ],
+     "peak": [
+      0.3471008947257124,
+      0.2623305095164888
+     ]
+    },
+    "stereo_96000": {
+     "shape": [
+      24000,
+      2
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0,
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.34734981646076873,
+     "warnings": [],
+     "rms": [
+      0.21420685709022846,
+      0.17674628104063728
+     ],
+     "peak": [
+      0.34734981646076873,
+      0.2623425645798118
+     ]
+    },
+    "mono_48000": {
+     "shape": [
+      12000,
+      1
+     ],
+     "preamp_db": 0.0,
+     "guard_gain_db": 0.0,
+     "delay_samples": [
+      0
+     ],
+     "peak_in": 0.5975984343893356,
+     "peak_out": 0.3472262151992053,
+     "warnings": [],
+     "rms": [
+      0.2141963554762437
+     ],
+     "peak": [
+      0.3472262151992053
+     ]
+    }
+   }
+  }
+ },
+ "errors": {
+  "json_unknown_field": {
+   "type": "ValueError",
+   "message": "Unbekannte Profilfelder: ['foo']"
+  },
+  "json_unknown_channel": {
+   "type": "ValueError",
+   "message": "Unbekannter Kanal 'C' (erlaubt: L, R)"
+  },
+  "json_unknown_channel_field": {
+   "type": "ValueError",
+   "message": "Unbekannte Felder in Kanal L: ['volume']"
+  },
+  "json_unknown_filter_field": {
+   "type": "ValueError",
+   "message": "Unbekannte Filterfelder: ['x']"
+  },
+  "json_filter_without_fc": {
+   "type": "ValueError",
+   "message": "Filter braucht mindestens 'type' und 'fc': {'type': 'peq'}"
+  },
+  "json_unknown_filter_type": {
+   "type": "ValueError",
+   "message": "Unbekannter Filtertyp 'notch'. Erlaubt: highpass, highshelf, hp, hpq, hs, hsc, lowpass, lowshelf, lp, lpq, ls, lsc, peaking, peq, pk"
+  },
+  "json_gain_beyond_24_db": {
+   "type": "ValueError",
+   "message": "|gain_db| darf 24.0 dB nicht ueberschreiten (war 25.0)"
+  },
+  "json_q_zero": {
+   "type": "ValueError",
+   "message": "q muss > 0 sein (war 0.0)"
+  },
+  "json_negative_fc": {
+   "type": "ValueError",
+   "message": "fc muss > 0 sein (war -1.0)"
+  },
+  "json_gain_on_lowpass": {
+   "type": "ValueError",
+   "message": "gain_db ist bei lowpass/highpass nicht zulaessig"
+  },
+  "json_preamp_text": {
+   "type": "ValueError",
+   "message": "preamp_db muss Zahl oder 'auto' sein (war 'laut')"
+  },
+  "json_channel_gain_beyond_12_db": {
+   "type": "ValueError",
+   "message": "|gain_db| je Kanal max. 12.0 dB (war 13.0)"
+  },
+  "json_channel_delay_beyond_50_ms": {
+   "type": "ValueError",
+   "message": "delay_ms muss in 0..50.0 liegen (war 51.0)"
+  },
+  "json_fc_above_nyquist": {
+   "type": "ValueError",
+   "message": "fc 15000.0 Hz liegt bei fs=22050 Hz nicht unter Nyquist (11025.0 Hz)"
+  },
+  "apo_include": {
+   "type": "ValueError",
+   "message": "Zeile 1: nicht unterstuetzt: 'Include: andere.txt'"
+  },
+  "apo_convolution": {
+   "type": "ValueError",
+   "message": "Zeile 1: nicht unterstuetzt: 'Convolution: hall.wav'"
+  },
+  "apo_delay_in_samples": {
+   "type": "ValueError",
+   "message": "Zeile 1: Delay in Samples nicht unterstuetzt, bitte in ms angeben"
+  },
+  "apo_bw_oct": {
+   "type": "ValueError",
+   "message": "Zeile 1: 'BW Oct' nicht unterstuetzt, bitte Q angeben"
+  },
+  "apo_pk_without_q": {
+   "type": "ValueError",
+   "message": "Zeile 1: Q fehlt bei PK"
+  },
+  "apo_shelf_db_per_octave": {
+   "type": "ValueError",
+   "message": "Zeile 1: Shelf mit dB/Oktave-Angabe (LS x dB) nicht unterstuetzt, bitte die Q-Form (Fc, Gain, Q) verwenden"
+  },
+  "apo_unknown_channel": {
+   "type": "ValueError",
+   "message": "Zeile 1: Kanal 'C' nicht unterstuetzt (nur L, R, ALL)"
+  },
+  "apo_unreadable_filter_line": {
+   "type": "ValueError",
+   "message": "Zeile 1: Filterzeile nicht lesbar: 'Filter 1: ON'"
+  },
+  "apo_filter_without_fc": {
+   "type": "ValueError",
+   "message": "Zeile 1: Fc fehlt"
+  },
+  "apo_gain_on_lowpass": {
+   "type": "ValueError",
+   "message": "Zeile 1: Gain bei LP nicht zulaessig"
+  },
+  "apo_copy_line": {
+   "type": "ValueError",
+   "message": "Zeile 1: nicht unterstuetzt: 'Copy: L=R'"
+  },
+  "apo_preamp_without_number": {
+   "type": "ValueError",
+   "message": "Zeile 1: Zahl erwartet in ' dB'"
+  },
+  "apo_delay_without_number": {
+   "type": "ValueError",
+   "message": "Zeile 1: Zahl erwartet in ' ms'"
+  },
+  "apo_fc_above_nyquist": {
+   "type": "ValueError",
+   "message": "fc 15000.0 Hz liegt bei fs=22050 Hz nicht unter Nyquist (11025.0 Hz)"
+  }
+ }
+}

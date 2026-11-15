@@ -1,0 +1,12 @@
+﻿{
+  "description": "Aliase und Kleinschreibung (0.2.0 akzeptiert beides)",
+  "preamp_db": -1.0,
+  "filters": [
+    {"type": "pk", "fc": 500, "gain_db": -2.0, "q": 1.0},
+    {"type": "Peaking", "fc": 4000, "gain_db": -1.0, "q": 2.0}
+  ],
+  "channels": {
+    "l": {"filters": [{"type": "ls", "fc": 200, "gain_db": -2.0, "q": 0.7}]},
+    "r": {"filters": [{"type": "hs", "fc": 6000, "gain_db": -2.0, "q": 0.7}, {"type": "lp", "fc": 15000, "q": 0.7071}, {"type": "HP", "fc": 40, "q": 0.7071}]}
+  }
+}

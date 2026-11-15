@@ -1,0 +1,10 @@
+{
+  "name": "compat-j1",
+  "preamp_db": "auto",
+  "filters": [
+    {"type": "peq", "fc": 63, "gain_db": -4.0, "q": 5.0},
+    {"type": "peq", "fc": 2500, "gain_db": -2.0, "q": 3.0},
+    {"type": "highshelf", "fc": 8000, "gain_db": -1.5, "q": 0.7},
+    {"type": "lowpass", "fc": 18000, "q": 0.7071}
+  ]
+}
