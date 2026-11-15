@@ -13,7 +13,7 @@
   - `tests/test_dsp.py` (4 neue Tests): Delay-Grenze beim APO-Import (−1, 0, 50 und 100 ms).
 - Sonst keine Änderung an DSP-Funktionen, Audioausgabe oder Profilformat.
 
-## 0.2.0 (Release-Kandidat, Stand 15.11.2026)
+## 0.2.0 (veröffentlicht am 15.11.2026)
 
 Änderungen gegenüber 0.1.2 (die Versionen 0.1.x waren nicht öffentlich).
 
