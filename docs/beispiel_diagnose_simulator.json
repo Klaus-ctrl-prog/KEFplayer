@@ -1,0 +1,632 @@
+{
+  "api_version": 1,
+  "kefplayer_version": "0.2.0",
+  "endpoint": "diagnostics",
+  "generated_at": "2026-11-14T13:42:28.126+00:00",
+  "uptime_s": 9.357,
+  "read_only": true,
+  "privacy": {
+    "mode": "standard",
+    "redacted": [
+      "Verzeichnispfade",
+      "Renderer-Name/IP/UDN/URL",
+      "Medienserver-Adresse",
+      "IP-Adressen und Pfade in Fehlertexten"
+    ],
+    "always_removed": [
+      "URL-Token des Medienservers"
+    ]
+  },
+  "data": {
+    "final": true,
+    "summary": {
+      "phase": "queue_ended",
+      "n_tracks_queue": 3,
+      "tracks_finished": 3,
+      "end_reasons": {
+        "ended": 3
+      },
+      "processed_tracks": 0,
+      "findings": {
+        "error": 0,
+        "warn": 0,
+        "info": 0
+      },
+      "profile": "neutral",
+      "renderer_model": "MockRenderer"
+    },
+    "findings": [],
+    "timing": {
+      "gap_before_s": {
+        "n": 2,
+        "min": 0.108,
+        "median": 0.108,
+        "mean": 0.108,
+        "max": 0.108
+      },
+      "startup_delay_s": {
+        "n": 3,
+        "min": 0.106,
+        "median": 0.106,
+        "mean": 0.106,
+        "max": 0.107
+      },
+      "resolution_hint": {
+        "fast_poll_s": 0.05,
+        "poll_s": 0.2,
+        "note": "Zeiten sind Abfragezeitpunkte des Players (Aufl\u00f6sung ca. fast_poll_s kurz vor Titelende und beim Start, sonst poll_s) plus SOAP-Latenz. Modellangabe, nicht gemessen."
+      }
+    },
+    "status": {
+      "phase": "queue_ended",
+      "phase_meaning": "Warteschlange beendet",
+      "queue": {
+        "n_tracks": 3,
+        "tracks_finished": 3,
+        "started_at": "2026-11-14T13:42:18.771+00:00",
+        "ended_at": "2026-11-14T13:42:28.126+00:00"
+      },
+      "track": null,
+      "last_finished_track": {
+        "index": 2,
+        "number": 3,
+        "name": "03 Testton 3.flac",
+        "end_reason": "ended",
+        "startup_delay_s": 0.106,
+        "gap_before_s": 0.108,
+        "ended_early": false
+      },
+      "last_event": {
+        "seq": 9,
+        "event": "queue_end",
+        "ts": "2026-11-14T13:42:28.126+00:00",
+        "age_s": 0.001
+      },
+      "live": {
+        "enabled": true,
+        "interval_s": 1.0,
+        "timeout_s": 2.0,
+        "actions": [
+          "GetTransportInfo",
+          "GetPositionInfo"
+        ],
+        "available": false,
+        "age_s": 9.265,
+        "queried_at": "2026-11-14T13:42:18.859+00:00",
+        "ok": null,
+        "error": "letzte erfolgreiche Abfrage vor 9.3 s, zu alt fuer einen aktuellen Wert",
+        "latency_ms": 2.5,
+        "stale": true
+      }
+    },
+    "renderer": {
+      "identity": {
+        "manufacturer": "Mock",
+        "model_name": "MockRenderer",
+        "device_type": "urn:schemas-upnp-org:device:MediaRenderer:1",
+        "friendly_name": "redacted",
+        "host": "redacted",
+        "udn": "redacted",
+        "location": "redacted"
+      },
+      "services": [
+        "AVTransport:1",
+        "ConnectionManager:1",
+        "RenderingControl:1"
+      ],
+      "sink": {
+        "state": "read",
+        "at": "2026-11-14T13:42:18.772+00:00",
+        "mimes": [
+          "audio/flac",
+          "audio/x-flac",
+          "audio/wav",
+          "audio/x-wav",
+          "audio/mpeg"
+        ],
+        "protocol_infos": [
+          "http-get:*:audio/flac:*",
+          "http-get:*:audio/x-flac:*",
+          "http-get:*:audio/wav:*",
+          "http-get:*:audio/x-wav:*",
+          "http-get:*:audio/mpeg:*"
+        ],
+        "n_protocol_infos": 5
+      },
+      "capabilities": {
+        "flac_in_sink": true,
+        "wav_in_sink": true,
+        "mp3_in_sink": true,
+        "note": "Eigenangabe des Geraets (GetProtocolInfo), kein Wiedergabetest."
+      },
+      "connection": {
+        "reachable": null,
+        "source": "live",
+        "last_check_ms": 2.5,
+        "last_check_age_s": 9.265,
+        "evidence": {
+          "sink_state": "read",
+          "sink_at": "2026-11-14T13:42:18.772+00:00",
+          "tracks_with_error": 0
+        }
+      },
+      "live": {
+        "enabled": true,
+        "interval_s": 1.0,
+        "timeout_s": 2.0,
+        "actions": [
+          "GetTransportInfo",
+          "GetPositionInfo"
+        ],
+        "available": false,
+        "age_s": 9.265,
+        "queried_at": "2026-11-14T13:42:18.859+00:00",
+        "ok": null,
+        "error": "letzte erfolgreiche Abfrage vor 9.3 s, zu alt fuer einen aktuellen Wert",
+        "latency_ms": 2.5,
+        "stale": true
+      },
+      "media_server": {
+        "port": 35119,
+        "bind": "127.0.0.1",
+        "advertise_host": "redacted"
+      }
+    },
+    "dsp": {
+      "profile": {
+        "name": "neutral",
+        "is_neutral": true,
+        "preamp_setting_db": "auto",
+        "filters_all_channels": [],
+        "channels": {
+          "L": {
+            "gain_db": 0.0,
+            "delay_ms": 0.0,
+            "filters": [],
+            "defined_in_profile": false
+          },
+          "R": {
+            "gain_db": 0.0,
+            "delay_ms": 0.0,
+            "filters": [],
+            "defined_in_profile": false
+          }
+        },
+        "warnings": []
+      },
+      "source": "queue_start-Ereignis",
+      "channel_delays_ms": {
+        "L": 0.0,
+        "R": 0.0
+      },
+      "applied_per_track": [],
+      "output": {
+        "fmt": "FLAC",
+        "bits": "wie Quelle",
+        "dither": true
+      }
+    },
+    "audio": {
+      "serving": {
+        "serve_original": true,
+        "convert_requested": false,
+        "fmt": "FLAC",
+        "bits": null,
+        "dither": true,
+        "plain": false,
+        "mime_override": null
+      },
+      "current": null,
+      "recent": [
+        {
+          "index": 0,
+          "name": "01 Testton 1.flac",
+          "current": false,
+          "mime": "audio/flac",
+          "mime_in_sink": true,
+          "target_format": {
+            "format": "FLAC",
+            "subtype": "PCM_16",
+            "bits": 16,
+            "samplerate": 8000,
+            "channels": 2,
+            "frames": 24000,
+            "duration_s": 3.0
+          },
+          "source_format": {
+            "value": {
+              "format": "FLAC",
+              "subtype": "PCM_16",
+              "bits": 16,
+              "samplerate": 8000,
+              "channels": 2,
+              "frames": 24000,
+              "duration_s": 3.0
+            },
+            "origin": "gesendete Datei ist das Original"
+          },
+          "processing_path": {
+            "mode": "original",
+            "description": "Originaldatei unveraendert (bitgenau) ueber den Medienserver an den Renderer"
+          },
+          "differs": {
+            "format": false,
+            "samplerate": false,
+            "channels": false,
+            "bits": false
+          }
+        },
+        {
+          "index": 1,
+          "name": "02 Testton 2.flac",
+          "current": false,
+          "mime": "audio/flac",
+          "mime_in_sink": true,
+          "target_format": {
+            "format": "FLAC",
+            "subtype": "PCM_16",
+            "bits": 16,
+            "samplerate": 8000,
+            "channels": 2,
+            "frames": 24000,
+            "duration_s": 3.0
+          },
+          "source_format": {
+            "value": {
+              "format": "FLAC",
+              "subtype": "PCM_16",
+              "bits": 16,
+              "samplerate": 8000,
+              "channels": 2,
+              "frames": 24000,
+              "duration_s": 3.0
+            },
+            "origin": "gesendete Datei ist das Original"
+          },
+          "processing_path": {
+            "mode": "original",
+            "description": "Originaldatei unveraendert (bitgenau) ueber den Medienserver an den Renderer"
+          },
+          "differs": {
+            "format": false,
+            "samplerate": false,
+            "channels": false,
+            "bits": false
+          }
+        },
+        {
+          "index": 2,
+          "name": "03 Testton 3.flac",
+          "current": false,
+          "mime": "audio/flac",
+          "mime_in_sink": true,
+          "target_format": {
+            "format": "FLAC",
+            "subtype": "PCM_16",
+            "bits": 16,
+            "samplerate": 8000,
+            "channels": 2,
+            "frames": 24000,
+            "duration_s": 3.0
+          },
+          "source_format": {
+            "value": {
+              "format": "FLAC",
+              "subtype": "PCM_16",
+              "bits": 16,
+              "samplerate": 8000,
+              "channels": 2,
+              "frames": 24000,
+              "duration_s": 3.0
+            },
+            "origin": "gesendete Datei ist das Original"
+          },
+          "processing_path": {
+            "mode": "original",
+            "description": "Originaldatei unveraendert (bitgenau) ueber den Medienserver an den Renderer"
+          },
+          "differs": {
+            "format": false,
+            "samplerate": false,
+            "channels": false,
+            "bits": false
+          }
+        }
+      ]
+    },
+    "tracks": [
+      {
+        "index": 0,
+        "number": 1,
+        "name": "01 Testton 1.flac",
+        "processed": false,
+        "mime": "audio/flac",
+        "mime_in_sink": true,
+        "served_format": {
+          "format": "FLAC",
+          "subtype": "PCM_16",
+          "bits": 16,
+          "samplerate": 8000,
+          "channels": 2,
+          "frames": 24000,
+          "duration_s": 3.0
+        },
+        "end_reason": "ended",
+        "startup_delay_s": 0.107,
+        "gap_before_s": null,
+        "wall_s": 3.118,
+        "last_position_s": 2.96,
+        "ended_early": false,
+        "error": null,
+        "requests": {
+          "count": 2,
+          "methods": {
+            "HEAD": 1,
+            "GET": 1
+          },
+          "statuses": {
+            "200": 2
+          },
+          "bytes_sent": 44707,
+          "range_requests": 0
+        }
+      },
+      {
+        "index": 1,
+        "number": 2,
+        "name": "02 Testton 2.flac",
+        "processed": false,
+        "mime": "audio/flac",
+        "mime_in_sink": true,
+        "served_format": {
+          "format": "FLAC",
+          "subtype": "PCM_16",
+          "bits": 16,
+          "samplerate": 8000,
+          "channels": 2,
+          "frames": 24000,
+          "duration_s": 3.0
+        },
+        "end_reason": "ended",
+        "startup_delay_s": 0.106,
+        "gap_before_s": 0.108,
+        "wall_s": 3.114,
+        "last_position_s": 2.956,
+        "ended_early": false,
+        "error": null,
+        "requests": {
+          "count": 2,
+          "methods": {
+            "HEAD": 1,
+            "GET": 1
+          },
+          "statuses": {
+            "200": 2
+          },
+          "bytes_sent": 44731,
+          "range_requests": 0
+        }
+      },
+      {
+        "index": 2,
+        "number": 3,
+        "name": "03 Testton 3.flac",
+        "processed": false,
+        "mime": "audio/flac",
+        "mime_in_sink": true,
+        "served_format": {
+          "format": "FLAC",
+          "subtype": "PCM_16",
+          "bits": 16,
+          "samplerate": 8000,
+          "channels": 2,
+          "frames": 24000,
+          "duration_s": 3.0
+        },
+        "end_reason": "ended",
+        "startup_delay_s": 0.106,
+        "gap_before_s": 0.108,
+        "wall_s": 3.113,
+        "last_position_s": 2.955,
+        "ended_early": false,
+        "error": null,
+        "requests": {
+          "count": 2,
+          "methods": {
+            "HEAD": 1,
+            "GET": 1
+          },
+          "statuses": {
+            "200": 2
+          },
+          "bytes_sent": 44776,
+          "range_requests": 0
+        }
+      }
+    ],
+    "tracks_omitted": 0,
+    "events": [
+      {
+        "seq": 1,
+        "ts": "2026-11-14T13:42:18.771+00:00",
+        "event": "queue_start",
+        "n_tracks": 3,
+        "profile_name": "neutral",
+        "profile_neutral": true,
+        "poll_s": 0.2,
+        "level": "info"
+      },
+      {
+        "seq": 2,
+        "ts": "2026-11-14T13:42:18.772+00:00",
+        "event": "sink",
+        "n_protocol_infos": 5,
+        "mimes": [
+          "audio/flac",
+          "audio/x-flac",
+          "audio/wav",
+          "audio/x-wav",
+          "audio/mpeg"
+        ],
+        "level": "info"
+      },
+      {
+        "seq": 3,
+        "ts": "2026-11-14T13:42:18.773+00:00",
+        "event": "track_start",
+        "index": 0,
+        "name": "01 Testton 1.flac",
+        "processed": false,
+        "mime": "audio/flac",
+        "mime_in_sink": true,
+        "served_format": {
+          "format": "FLAC",
+          "subtype": "PCM_16",
+          "bits": 16,
+          "samplerate": 8000,
+          "channels": 2,
+          "frames": 24000,
+          "duration_s": 3.0
+        },
+        "level": "info"
+      },
+      {
+        "seq": 4,
+        "ts": "2026-11-14T13:42:21.895+00:00",
+        "event": "track_end",
+        "index": 0,
+        "name": "01 Testton 1.flac",
+        "end_reason": "ended",
+        "startup_delay_s": 0.107,
+        "wall_s": 3.118,
+        "last_position_s": 2.96,
+        "ended_early": false,
+        "gap_before_s": null,
+        "error": null,
+        "n_requests": 2,
+        "level": "info"
+      },
+      {
+        "seq": 5,
+        "ts": "2026-11-14T13:42:21.896+00:00",
+        "event": "track_start",
+        "index": 1,
+        "name": "02 Testton 2.flac",
+        "processed": false,
+        "mime": "audio/flac",
+        "mime_in_sink": true,
+        "served_format": {
+          "format": "FLAC",
+          "subtype": "PCM_16",
+          "bits": 16,
+          "samplerate": 8000,
+          "channels": 2,
+          "frames": 24000,
+          "duration_s": 3.0
+        },
+        "level": "info"
+      },
+      {
+        "seq": 6,
+        "ts": "2026-11-14T13:42:25.011+00:00",
+        "event": "track_end",
+        "index": 1,
+        "name": "02 Testton 2.flac",
+        "end_reason": "ended",
+        "startup_delay_s": 0.106,
+        "wall_s": 3.114,
+        "last_position_s": 2.956,
+        "ended_early": false,
+        "gap_before_s": 0.108,
+        "error": null,
+        "n_requests": 2,
+        "level": "info"
+      },
+      {
+        "seq": 7,
+        "ts": "2026-11-14T13:42:25.011+00:00",
+        "event": "track_start",
+        "index": 2,
+        "name": "03 Testton 3.flac",
+        "processed": false,
+        "mime": "audio/flac",
+        "mime_in_sink": true,
+        "served_format": {
+          "format": "FLAC",
+          "subtype": "PCM_16",
+          "bits": 16,
+          "samplerate": 8000,
+          "channels": 2,
+          "frames": 24000,
+          "duration_s": 3.0
+        },
+        "level": "info"
+      },
+      {
+        "seq": 8,
+        "ts": "2026-11-14T13:42:28.125+00:00",
+        "event": "track_end",
+        "index": 2,
+        "name": "03 Testton 3.flac",
+        "end_reason": "ended",
+        "startup_delay_s": 0.106,
+        "wall_s": 3.113,
+        "last_position_s": 2.955,
+        "ended_early": false,
+        "gap_before_s": 0.108,
+        "error": null,
+        "n_requests": 2,
+        "level": "info"
+      },
+      {
+        "seq": 9,
+        "ts": "2026-11-14T13:42:28.126+00:00",
+        "event": "queue_end",
+        "played": 3,
+        "reasons": [
+          "ended",
+          "ended",
+          "ended"
+        ],
+        "level": "info"
+      }
+    ],
+    "environment": {
+      "python": "3.13.18",
+      "implementation": "CPython",
+      "os": "Linux 6.18.44-fc-v470",
+      "machine": "x86_64",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "soundfile": "0.14.0",
+      "libsndfile": "1.2.2"
+    },
+    "api": {
+      "live_enabled": true,
+      "details_mode": false,
+      "event_buffer": 300,
+      "events_total": 9,
+      "events_dropped": 0,
+      "queues_seen": 1,
+      "requests": {
+        "total": 7,
+        "rejected_method": 1
+      },
+      "started_at": "2026-11-14T13:42:18.770+00:00"
+    },
+    "notes": [
+      "Alle Werte stammen aus Ereignissen dieses laufenden Prozesses; nichts aus alten Protokolldateien.",
+      "Position, Pause und Transportstatus sind nur mit --api-live bekannt (sonst null, siehe unknown).",
+      "Titel = Dateiname; Tags werden von der API nicht gelesen.",
+      "Zeitwerte haben die Aufloesung der Player-Abfragen (timing.resolution_hint).",
+      "Protokolltexte sind bereinigt (Pfade, IPs, URLs); Best Effort, vor dem Weitergeben pruefen."
+    ]
+  },
+  "unknown": {
+    "status.track": "Warteschlange beendet.",
+    "renderer.capabilities.gapless": "nicht abgefragt (SCPD/SetNextAVTransportURI wird nicht gelesen)",
+    "renderer.connection.reachable": "nicht ermittelbar: ohne Live-Abfrage (--api-live), ohne Ergebnis oder die letzte Abfrage ist zu alt; Hinweise nur unter evidence",
+    "dsp.applied_per_track": "noch kein Titel verarbeitet (bei neutralem Profil wird das Original gesendet)",
+    "audio.current": "kein aktiver Titel (Phase: queue_ended)"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "test-tiefpass-500",
+  "description": "Nur Funktionstest: deutlich hoerbarer Tiefpass, um zu pruefen, dass die KEF die gefilterte Datei spielt. Keine Klangempfehlung.",
+  "preamp_db": "auto",
+  "filters": [
+    {"type": "lowpass", "fc": 500, "q": 0.7071}
+  ]
+}

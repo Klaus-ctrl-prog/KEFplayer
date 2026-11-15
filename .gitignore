@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Test- und Coverage-Caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build und Paketierung
+build/
+dist/
+*.egg-info/
+
+# Virtuelle Umgebungen
+.venv/
+venv/
+
+# Laufprotokolle von kefplayer (z. B. kefplayer_log.jsonl) gehoeren nicht ins Repository
+*.jsonl
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
