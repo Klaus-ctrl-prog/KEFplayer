@@ -54,7 +54,7 @@ Syntaxbeispiel, keine Empfehlung:
 
 - Typen: `peq`, `lowshelf`, `highshelf`, `lowpass`, `highpass` (Biquads nach RBJ-Cookbook, Q-Form; Tief-/Hochpass 2. Ordnung).
 - `preamp_db`: `"auto"` setzt den Preamp so, dass der höchste Betragsgang aller Kanäle ≤ 0 dB bleibt (gemeinsam für beide Kanäle, die Balance bleibt). Ein manueller Wert wird verwendet, bei zu wenig Headroom gibt es eine Warnung. Zusätzlich skaliert ein Clipping-Schutz das Stück, falls die Spitze trotzdem über Vollaussteuerung läge, und meldet das.
-- Import von Equalizer-APO-/REW-Textdateien (`Preamp`, `Filter n: ON PK|LS|HS|LSC|HSC|LP|HP ...`, `Channel: L|R`, `Delay: ms`). Nicht Unterstütztes (z. B. `Include`, `Convolution`, `BW Oct`, Delay in Samples) führt zu einem Fehler statt stillem Ignorieren.
+- Import von Equalizer-APO-/REW-Textdateien (`Preamp`, `Filter n: ON PK|LS|HS|LSC|HSC|LP|HP ...`, `Channel: L|R`, `Delay: ms` mit 0 bis 50 ms). Nicht Unterstütztes (z. B. `Include`, `Convolution`, `BW Oct`, Delay in Samples) und Delay außerhalb von 0 bis 50 ms führen zu einem Fehler statt stillem Ignorieren.
 - **Shelf-Filter aus APO-Dateien:** Equalizer APO kennt mehrere Shelf-Varianten (LS/HS, LSC/HSC, "LS 6dB/12dB") mit unterschiedlicher Definition von Fc (Eck- oder Mittenfrequenz) und Steilheit. Gelesen wird nur die Q-Form (`Fc`, `Gain`, `Q`); Formen mit dB/Oktave-Angabe werden abgelehnt. Auch bei der Q-Form ist **nicht verifiziert**, dass Fc und Q exakt wie in APO/REW zu verstehen sind. Dazu erscheint bei jedem importierten Shelf ein Hinweis. Vor der Nutzung den Frequenzgang mit `kefplayer response` gegen REW vergleichen. Ebenso unverifiziert: der Standard-Q (0,7071) von `LP`/`HP` ohne Q-Angabe.
 - Hinweise beim Laden eines Profils (nur Warnungen, keine Sperre): Filter im Bassbereich unter 150 Hz (mögliche Doppelkorrektur, wenn dieselbe Korrektur schon an anderer Stelle im Signalweg wirkt, z. B. in einem Subwoofer-DSP), Filter über 150 Hz (sinnvoll nur auf Basis über mehrere Positionen gemittelter Messungen), Boosts (vorher prüfen, ob an der Stelle ein Einbruch durch Auslöschung vorliegt; solche Einbrüche lassen sich nicht wegentzerren), positiver Preamp (Clipping-Gefahr), Kanalunterschiede wirken nur auf diesen Signalweg.
 - Quantisierung: bei neutralem Profil wird die Originaldatei unverändert ausgeliefert (Bytes identisch, im Test gegen den Simulator belegt; was der Renderer intern damit macht, ist nicht geprüft). Sonst Ausgabe in der Bittiefe der Quelle, bei 16 Bit mit TPDF-Dither (24 Bit ohne Dither). Keine Neuberechnung der Abtastrate.
@@ -78,7 +78,7 @@ Das Ereignis `sink` enthält die vom Gerät gemeldeten Formate. `cleanup_failed`
 
 ## Tests und Prüfstand
 
-Die Testsuite umfasst 264 Tests (119 zur Wiedergabe, 145 zur Status-API). Sie läuft ausschließlich gegen den simulierten Renderer (`tests/mock_renderer.py`) und braucht weder eine KEF noch ein Heimnetz. **Alle Nachweise stammen aus Tests mit dem Simulator, nicht aus Tests mit echter KEF-Hardware.**
+Die Testsuite umfasst 317 Tests (119 zur Wiedergabe, 145 zur Status-API, 53 zu den L/R-Funktionen und zur APO-Delay-Grenze; Stand der Veröffentlichung 0.2.0: 264). Sie läuft ausschließlich gegen den simulierten Renderer (`tests/mock_renderer.py`) und braucht weder eine KEF noch ein Heimnetz. **Alle Nachweise stammen aus Tests mit dem Simulator, nicht aus Tests mit echter KEF-Hardware.**
 
 **Windows** (vom Entwickler ausgeführt, getrennt von den Linux-Läufen):
 
@@ -87,7 +87,7 @@ Die Testsuite umfasst 264 Tests (119 zur Wiedergabe, 145 zur Status-API). Sie l�
 | Windows 11, CPython 3.12.10, pytest 9.2.0 | 264 Tests, drei erfolgreiche vollständige Testläufe |
 | Windows 11, CPython 3.12.10 | `tests/test_upnp.py::test_server_request_log` einzeln wiederholt: 10 von 10 Läufen erfolgreich |
 
-Die Windows-Läufe erfolgten vor der reinen Textänderung des Hinweises zu Filtern im Bassbereich in `kefplayer/dsp.py` (siehe CHANGELOG, Abschnitt „Geändert“) und wurden danach nicht wiederholt. Die Filterlogik ist unverändert.
+Die Windows-Läufe erfolgten vor der reinen Textänderung des Hinweises zu Filtern im Bassbereich in `kefplayer/dsp.py` (siehe CHANGELOG, Abschnitt „Geändert“) und wurden danach nicht wiederholt. Die Filterlogik ist unverändert. Die 53 Tests nach 0.2.0 (siehe CHANGELOG, Abschnitt „Unveröffentlicht“) wurden unter Windows nicht ausgeführt.
 
 **Linux** (jeweils frische virtuelle Umgebung, `pip install ".[test]"`, `pip check` ohne Befund, `kefplayer --version` und `python -m kefplayer --version` ergeben `kefplayer 0.2.0`; Lauf vom 15.11.2026 mit dem Stand dieser Veröffentlichung, pytest 9.2.0):
 
@@ -98,9 +98,11 @@ Die Windows-Läufe erfolgten vor der reinen Textänderung des Hinweises zu Filte
 | 3.12.3 | 2.5.4 | 1.18.1 | 0.14.0 | 264 bestanden |
 | 3.13.18 | 2.5.4 | 1.18.1 | 0.14.0 | 264 bestanden |
 
+**Linux, Stand nach 0.2.0 (unveröffentlicht):** volle Testsuite mit 317 Tests am 15.11.2026, in den bereits vorhandenen Testumgebungen (nicht neu aufgesetzt, ohne erneutes `pip install` und `pip check`) mit denselben Bibliotheksversionen wie in der Tabelle: CPython 3.10.20, 3.11.18, 3.12.3 und 3.13.18, jeweils 317 bestanden.
+
 Nicht getestet: Windows mit anderen Python-Versionen als 3.12.10, macOS sowie jede echte KEF-Hardware.
 
-Die Tests decken unter anderem ab: Filter-Eigenschaften, neutralen Durchlauf bitgenau (16/24 Bit; 44,1/48/96 kHz), Medienserver (Range, HEAD, 416, nur registrierte Token), UPnP (Beschreibung, SOAP-Fehlercodes, DIDL, SSDP per Unicast) und Wiedergabe (Reihenfolge, Pause, Überspringen, Stopp, Ablehnung, nie startender Renderer, zu frühes Ende, verschwindender Renderer, fehlgeschlagenes Löschen).
+Die Tests decken unter anderem ab: Filter-Eigenschaften, unabhängige L/R-Funktionen (EQ, Pegel, Delay, Kanaltrennung, Dateilänge), neutralen Durchlauf bitgenau (16/24 Bit; 44,1/48/96 kHz), Medienserver (Range, HEAD, 416, nur registrierte Token), UPnP (Beschreibung, SOAP-Fehlercodes, DIDL, SSDP per Unicast) und Wiedergabe (Reihenfolge, Pause, Überspringen, Stopp, Ablehnung, nie startender Renderer, zu frühes Ende, verschwindender Renderer, fehlgeschlagenes Löschen).
 
 Status-API (0.2.0): 145 Tests (Sammler, Datenschutz, HTTP-Härtung, Wiedergabe unter API-Last unverändert, Live-Abfrage nur `Get*` und gedrosselt, Kommandozeile, Beenden). Vierzehn absichtliche Sabotageversuche an den Schutzmaßnahmen wurden bei der Entwicklung jeweils von einem Test erkannt (die dafür verwendeten Skripte liegen nicht im Repository). Siehe `docs/status-api.md`.
 
@@ -189,6 +191,7 @@ Erst nach T01 sinnvoll zu entscheiden, weil das Fehlerbild der KEF unbekannt ist
 
 ## Änderungsstand
 
+- **Nach 0.2.0** (unveröffentlicht): `dsp.py`: Der APO-Import lehnt `Delay:` außerhalb von 0 bis 50 ms mit einer Fehlermeldung ab (vorher wurde die Grenze dort nicht geprüft). 53 neue Tests: `tests/test_lr_channels.py` (neu, 49 Tests zu den unabhängigen L/R-Funktionen) und vier Tests in `tests/test_dsp.py`. Sonst unverändert gegenüber 0.2.0. Siehe CHANGELOG.
 - **0.2.0** (gegenüber 0.1.2): Lokale, lesende Status-API (`kefplayer/api.py`, `docs/status-api.md`), Optionen `--no-api`, `--api-port`, `--api-live`, `--api-live-interval`, `--api-details`, `--diag-file` bei `play`; 145 neue Tests. Geändert gegenüber 0.1.2: `cli.py` (Optionen, Start/Stopp der API), `dsp.py` (nur der Text des Hinweises zu Filtern im Bassbereich, keine Logik), `__init__.py` (Version), `player.py` (verwendet für Laufzeitmessungen `time.perf_counter()` statt `time.monotonic()`. In der getesteten Windows-Umgebung mit CPython 3.12.10 lieferte `time.monotonic()` eine effektive Auflösung von etwa 15,6 ms), `pyproject.toml` (Version, Metadaten, Build-Anforderung `setuptools>=77`), die Testhelfer `tests/mock_renderer.py` (gleiche Zeitmessung), `tests/test_player.py` (eine Zeile) und `tests/test_upnp.py` (Synchronisation im Test `test_server_request_log`, der Medienserver schreibt den Protokolleintrag erst nach dem Senden der Antwort). Unverändert gegenüber 0.1.2: `audio.py`, `upnp.py`, `mediaserver.py`, `runlog.py`, `__main__.py` sowie `tests/test_audio.py`, `test_cli.py`, `test_dsp.py`, `test_review_fixes.py`. Schnittstellen: `cli.cmd_play` hat neue Argumente (nur über die Kommandozeile erreichbar), `Player(on_event=...)` unverändert.
 - **0.1.2** (gegenüber 0.1.1): Ausgabe sagt "verarbeitet" statt "gefiltert", wenn nur umgewandelt wird. Drei Tests ergänzt (Kommandozeilenpfad von `--bits`, Kopfzeile, weitere Formate). Dokumentation: bekannte Schwächen, geplante Status-API.
 - **0.1.1** (gegenüber 0.1.0): `--format`/`--bits` wirken auch bei neutralem Profil. Fehlgeschlagenes Löschen temporärer Dateien bricht die Warteschlange nicht mehr ab. Schnelles Abfragen beim Start und kurz vor dem Titelende (Lücke im Simulator 0,53 s → 0,08 s). MIME-Typ und URL-Endung nach Dateiinhalt. APO-Import: Shelf-Formen mit dB/Oktave abgelehnt, Hinweis bei jedem Shelf. Start per `python -m kefplayer`. Ereignis `cleanup_failed` im Protokoll neu.

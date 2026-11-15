@@ -1,5 +1,18 @@
 # Changelog
 
+## Unveröffentlicht (nach 0.2.0, Stand 15.11.2026)
+
+### Behoben
+
+- `kefplayer/dsp.py`: Der Import von Equalizer-APO-Dateien lehnt `Delay:` außerhalb von 0 bis 50 ms jetzt mit einer Fehlermeldung ab (Zeilennummer, Grenze, Wert). Bisher umging der Import die Grenzprüfung von `ChannelSpec`: `Delay: 100 ms` wurde angenommen und angewandt, `Delay: -1 ms` wurde angenommen und führte erst beim Anwenden des Profils zu einem Fehler. Für JSON-Profile galt die Grenze schon vorher, ihre Verarbeitung ist unverändert.
+
+### Hinzugefügt
+
+- 53 neue Tests. Die Testsuite umfasst damit 317 Tests (0.2.0: 264).
+  - `tests/test_lr_channels.py` (neu, 49 Tests): unabhängige L/R-Funktionen mit Impulsen und getrennten L/R-Signalen, Sollwerte fest im Test. EQ (getrennte Ketten, unterschiedliche Filtertypen, Kanaltrennung), Pegel (unabhängige Verstärkung, Grenzen ±12 dB, Ausgangsamplituden, gemeinsamer Preamp) und Delay (Sample-Rundung, Grenzen 0 bis 50 ms, Dateilänge).
+  - `tests/test_dsp.py` (4 neue Tests): Delay-Grenze beim APO-Import (−1, 0, 50 und 100 ms).
+- Sonst keine Änderung an DSP-Funktionen, Audioausgabe oder Profilformat.
+
 ## 0.2.0 (Release-Kandidat, Stand 15.11.2026)
 
 Änderungen gegenüber 0.1.2 (die Versionen 0.1.x waren nicht öffentlich).
