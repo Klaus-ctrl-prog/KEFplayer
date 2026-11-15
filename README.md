@@ -2,7 +2,7 @@
 
 KEFplayer spielt Audiodateien (FLAC/WAV) per UPnP/DLNA auf einem Renderer ab (Ziel: KEF LS50 Wireless Gen1) und kann die Dateien vorher mit einem Filterprofil bearbeiten (PEQ, Preamp mit automatischem Headroom, Pegel/Delay je Kanal). Pro Titel wird protokolliert, was tatsächlich gesendet wurde und wie sich der Renderer verhielt.
 
-Version 0.2.0 (Status-API neu). Python-Paket und Befehl heißen `kefplayer`. Lizenz: MIT. Änderungen: siehe [CHANGELOG.md](CHANGELOG.md).
+Version 0.2.1 (Fehlerkorrekturen und mehr Tests gegenüber 0.2.0; Status-API seit 0.2.0). Python-Paket und Befehl heißen `kefplayer`. Lizenz: MIT. Änderungen: siehe [CHANGELOG.md](CHANGELOG.md).
 
 > **Stand der Prüfung:** Getestet wurde bisher nur gegen einen **simulierten Renderer**. **Ein echter KEF-Lautsprecher wurde noch nicht getestet.** Die Validierung mit echter Hardware steht aus und ist frühestens ab März 2027 vorgesehen. Es gibt keine Aussage über einen nachgewiesenen Klanggewinn oder eine validierte Kompatibilität mit KEF-Hardware.
 
@@ -78,7 +78,7 @@ Das Ereignis `sink` enthält die vom Gerät gemeldeten Formate. `cleanup_failed`
 
 ## Tests und Prüfstand
 
-Die Testsuite umfasst 317 Tests (119 zur Wiedergabe, 145 zur Status-API, 53 zu den L/R-Funktionen und zur APO-Delay-Grenze; Stand der Veröffentlichung 0.2.0: 264). Sie läuft ausschließlich gegen den simulierten Renderer (`tests/mock_renderer.py`) und braucht weder eine KEF noch ein Heimnetz. **Alle Nachweise stammen aus Tests mit dem Simulator, nicht aus Tests mit echter KEF-Hardware.**
+Die Testsuite umfasst 628 Tests (119 zur Wiedergabe, 145 zur Status-API, 53 zu den L/R-Funktionen und zur APO-Delay-Grenze, 311 zu Rückwärtskompatibilität gegen 0.2.0, numerischer Stabilität, Randfällen, Simulator und Fehlerbehandlung von `process`; Stand der Veröffentlichung 0.2.0: 264). Sie läuft ausschließlich gegen den simulierten Renderer (`tests/mock_renderer.py`) und braucht weder eine KEF noch ein Heimnetz. **Alle Nachweise stammen aus Tests mit dem Simulator, nicht aus Tests mit echter KEF-Hardware.**
 
 **Windows** (vom Entwickler ausgeführt, getrennt von den Linux-Läufen):
 
@@ -86,10 +86,11 @@ Die Testsuite umfasst 317 Tests (119 zur Wiedergabe, 145 zur Status-API, 53 zu d
 |---|---|
 | Windows 11, CPython 3.12.10, pytest 9.2.0 | 264 Tests, drei erfolgreiche vollständige Testläufe |
 | Windows 11, CPython 3.12.10 | `tests/test_upnp.py::test_server_request_log` einzeln wiederholt: 10 von 10 Läufen erfolgreich |
+| Windows, CPython 3.12.10 (Prüfziel; Windows-Version und Bibliotheksversionen für diesen Lauf nicht festgehalten) | 628 Tests (Stand nach 0.2.0): 616 bestanden, 12 übersprungen (Referenz in erweiterter Genauigkeit unter Windows nicht verfügbar, siehe CHANGELOG), 0 fehlgeschlagen; ein Lauf |
 
-Die Windows-Läufe erfolgten vor der reinen Textänderung des Hinweises zu Filtern im Bassbereich in `kefplayer/dsp.py` (siehe CHANGELOG, Abschnitt „Geändert“) und wurden danach nicht wiederholt. Die Filterlogik ist unverändert. Die 53 Tests nach 0.2.0 (siehe CHANGELOG, Abschnitt „Unveröffentlicht“) wurden unter Windows nicht ausgeführt.
+Die Windows-Läufe mit 264 Tests erfolgten vor der reinen Textänderung des Hinweises zu Filtern im Bassbereich in `kefplayer/dsp.py` (siehe CHANGELOG, Abschnitt „Geändert“) und wurden nicht wiederholt. Die Filterlogik ist unverändert. Der Lauf mit 628 Tests (letzte Zeile der Tabelle) umfasst die geänderte Fassung und alle Tests nach 0.2.0 (siehe CHANGELOG, Abschnitt „Unveröffentlicht“). Er erfolgte vor dem Entfernen vereinzelter CR-Zeichen und einer zusätzlichen Leerzeile am Dateiende in `kefplayer/cli.py`, `tests/test_cli.py` und `tests/test_audio_edge_cases.py`, vor der Berichtigung eines Satzes in der Modulbeschreibung von `tests/test_audio_edge_cases.py` und vor der Anhebung der Version auf 0.2.1 (`kefplayer/__init__.py`, `pyproject.toml`, eine Zeile in `tests/test_api.py`). Mit dem veröffentlichten Stand (0.2.1) wurde unter Windows nicht erneut getestet.
 
-**Linux** (jeweils frische virtuelle Umgebung, `pip install ".[test]"`, `pip check` ohne Befund, `kefplayer --version` und `python -m kefplayer --version` ergeben `kefplayer 0.2.0`; Lauf vom 15.11.2026 mit dem Stand dieser Veröffentlichung, pytest 9.2.0):
+**Linux** (jeweils frische virtuelle Umgebung, `pip install ".[test]"`, `pip check` ohne Befund, `kefplayer --version` und `python -m kefplayer --version` ergeben `kefplayer 0.2.0`; Lauf vom 15.11.2026 mit dem Stand von 0.2.0, pytest 9.2.0):
 
 | CPython | numpy | scipy | soundfile | Ergebnis |
 |---|---|---|---|---|
@@ -98,7 +99,9 @@ Die Windows-Läufe erfolgten vor der reinen Textänderung des Hinweises zu Filte
 | 3.12.3 | 2.5.4 | 1.18.1 | 0.14.0 | 264 bestanden |
 | 3.13.18 | 2.5.4 | 1.18.1 | 0.14.0 | 264 bestanden |
 
-**Linux, Stand nach 0.2.0 (unveröffentlicht):** volle Testsuite mit 317 Tests am 15.11.2026, in den bereits vorhandenen Testumgebungen (nicht neu aufgesetzt, ohne erneutes `pip install` und `pip check`) mit denselben Bibliotheksversionen wie in der Tabelle: CPython 3.10.20, 3.11.18, 3.12.3 und 3.13.18, jeweils 317 bestanden.
+**Linux, Zwischenstand nach 0.2.0 (vor 0.2.1):** volle Testsuite mit 317 Tests am 15.11.2026, in den bereits vorhandenen Testumgebungen (nicht neu aufgesetzt, ohne erneutes `pip install` und `pip check`) mit denselben Bibliotheksversionen wie in der Tabelle: CPython 3.10.20, 3.11.18, 3.12.3 und 3.13.18, jeweils 317 bestanden.
+
+**Linux, Stand 0.2.1:** volle Testsuite mit 628 Tests am 15.11.2026 mit denselben Bibliotheksversionen wie in der Tabelle: CPython 3.10.20, 3.11.18, 3.12.3 und 3.13.18, jeweils 628 bestanden, keine übersprungen. Diese Läufe erfolgten wie der Windows-Lauf vor der Bereinigung der drei genannten Dateien und vor der Anhebung der Version auf 0.2.1. Mit dem veröffentlichten Stand wurde nur CPython 3.12.3 ausgeführt: 628 bestanden.
 
 Nicht getestet: Windows mit anderen Python-Versionen als 3.12.10, macOS sowie jede echte KEF-Hardware.
 
@@ -191,7 +194,7 @@ Erst nach T01 sinnvoll zu entscheiden, weil das Fehlerbild der KEF unbekannt ist
 
 ## Änderungsstand
 
-- **Nach 0.2.0** (unveröffentlicht): `dsp.py`: Der APO-Import lehnt `Delay:` außerhalb von 0 bis 50 ms mit einer Fehlermeldung ab (vorher wurde die Grenze dort nicht geprüft). 53 neue Tests: `tests/test_lr_channels.py` (neu, 49 Tests zu den unabhängigen L/R-Funktionen) und vier Tests in `tests/test_dsp.py`. Sonst unverändert gegenüber 0.2.0. Siehe CHANGELOG.
+- **0.2.1** (gegenüber 0.2.0): `dsp.py`: Der APO-Import lehnt `Delay:` außerhalb von 0 bis 50 ms mit einer Fehlermeldung ab (vorher wurde die Grenze dort nicht geprüft). `cli.py`: `process` meldet eine nicht lesbare oder beschädigte Audiodatei mit „Fehler: …“ und Exitcode 2 statt mit einem Traceback (Exitcode 1). 364 neue Tests (Testsuite jetzt 628): 53 Tests (`tests/test_lr_channels.py`, neu, 49 Tests zu den unabhängigen L/R-Funktionen, und vier Tests in `tests/test_dsp.py`) sowie 311 weitere Tests (`tests/test_compat_020.py`, `tests/test_numeric_stability.py`, `tests/test_audio_edge_cases.py` und `tests/test_lr_simulator.py`, alle neu, dazu ein Test in `tests/test_cli.py`). `__init__.py`, `pyproject.toml` (Version 0.2.1) und eine Zeile in `tests/test_api.py` (erwartete Versionsnummer). Sonst unverändert gegenüber 0.2.0. Siehe CHANGELOG.
 - **0.2.0** (gegenüber 0.1.2): Lokale, lesende Status-API (`kefplayer/api.py`, `docs/status-api.md`), Optionen `--no-api`, `--api-port`, `--api-live`, `--api-live-interval`, `--api-details`, `--diag-file` bei `play`; 145 neue Tests. Geändert gegenüber 0.1.2: `cli.py` (Optionen, Start/Stopp der API), `dsp.py` (nur der Text des Hinweises zu Filtern im Bassbereich, keine Logik), `__init__.py` (Version), `player.py` (verwendet für Laufzeitmessungen `time.perf_counter()` statt `time.monotonic()`. In der getesteten Windows-Umgebung mit CPython 3.12.10 lieferte `time.monotonic()` eine effektive Auflösung von etwa 15,6 ms), `pyproject.toml` (Version, Metadaten, Build-Anforderung `setuptools>=77`), die Testhelfer `tests/mock_renderer.py` (gleiche Zeitmessung), `tests/test_player.py` (eine Zeile) und `tests/test_upnp.py` (Synchronisation im Test `test_server_request_log`, der Medienserver schreibt den Protokolleintrag erst nach dem Senden der Antwort). Unverändert gegenüber 0.1.2: `audio.py`, `upnp.py`, `mediaserver.py`, `runlog.py`, `__main__.py` sowie `tests/test_audio.py`, `test_cli.py`, `test_dsp.py`, `test_review_fixes.py`. Schnittstellen: `cli.cmd_play` hat neue Argumente (nur über die Kommandozeile erreichbar), `Player(on_event=...)` unverändert.
 - **0.1.2** (gegenüber 0.1.1): Ausgabe sagt "verarbeitet" statt "gefiltert", wenn nur umgewandelt wird. Drei Tests ergänzt (Kommandozeilenpfad von `--bits`, Kopfzeile, weitere Formate). Dokumentation: bekannte Schwächen, geplante Status-API.
 - **0.1.1** (gegenüber 0.1.0): `--format`/`--bits` wirken auch bei neutralem Profil. Fehlgeschlagenes Löschen temporärer Dateien bricht die Warteschlange nicht mehr ab. Schnelles Abfragen beim Start und kurz vor dem Titelende (Lücke im Simulator 0,53 s → 0,08 s). MIME-Typ und URL-Endung nach Dateiinhalt. APO-Import: Shelf-Formen mit dB/Oktave abgelehnt, Hinweis bei jedem Shelf. Start per `python -m kefplayer`. Ereignis `cleanup_failed` im Protokoll neu.
