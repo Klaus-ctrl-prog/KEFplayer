@@ -22,6 +22,7 @@
 
 - `kefplayer/player.py` verwendet für Laufzeitmessungen (Start der Wiedergabe, Titelende, Warteschleife) `time.perf_counter()` statt `time.monotonic()`. In der getesteten Windows-Umgebung mit CPython 3.12.10 lieferte `time.monotonic()` eine effektive Auflösung von etwa 15,6 ms. Die aus diesen Zeitpunkten berechneten Protokollwerte (`startup_delay_s`, `wall_s`, `gap_before_s`) waren dadurch nur in Schritten dieser Größe aufgelöst. Im beobachteten Windows-Testlauf trat der sporadische Fehler `tests/test_player.py::test_neutral_serves_original_bytes` auf, weil `startup_delay_s` mit 0,015–0,016 s unter dem im Test erwarteten Mindestwert von 0,020 s lag.
 - `kefplayer/cli.py`: neue Optionen und Start/Stopp der Status-API (siehe oben).
+- `kefplayer/dsp.py`: nur der Text des Hinweises zu Filtern im Bassbereich (< 150 Hz) wurde allgemein verständlich umformuliert, projektinterne Begriffe sind entfernt. Keine Änderung an DSP-Logik, Filterberechnung, Schwellwerten oder an den übrigen Hinweisen.
 - `kefplayer/__init__.py`, `pyproject.toml`: Version 0.2.0. `pyproject.toml` enthält jetzt Autor (Klaus), Lizenz (`license = "MIT"`, `license-files`), README als Beschreibung und die Build-Anforderung `setuptools>=77`. Laufzeitabhängigkeiten unverändert (numpy, scipy, soundfile).
 - Tests:
   - `tests/mock_renderer.py` und `tests/test_player.py` (eine Zeile) verwenden dieselbe Zeitquelle `time.perf_counter()`.
@@ -30,7 +31,7 @@
 
 ### Unverändert gegenüber 0.1.2
 
-`kefplayer/audio.py`, `dsp.py`, `upnp.py`, `mediaserver.py`, `runlog.py`, `__main__.py`, die Beispielprofile in `examples/` sowie die Tests `test_audio.py`, `test_cli.py`, `test_dsp.py`, `test_review_fixes.py` und `conftest.py`.
+`kefplayer/audio.py`, `upnp.py`, `mediaserver.py`, `runlog.py`, `__main__.py`, die Beispielprofile in `examples/` sowie die Tests `test_audio.py`, `test_cli.py`, `test_dsp.py`, `test_review_fixes.py` und `conftest.py`.
 
 ### Bekannte Einschränkungen
 

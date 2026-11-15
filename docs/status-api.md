@@ -2,13 +2,13 @@
 
 Lokale, **ausschließlich lesende** Schnittstelle (HTTP + JSON), mit der der Laufzeitzustand des KEFplayers abgefragt und für die gemeinsame technische Analyse exportiert werden kann. Modul: `kefplayer/api.py`.
 
-Stand: 14.11.2026. Entwickelt ohne Zugang zu PC, KEF und Heimnetz, getestet gegen einen simulierten Renderer unter Linux. **PowerShell wurde nicht ausgeführt**, die Beispiele unten sind ungetestet (der Server ist mit Python-HTTP-Clients geprüft).
+Stand: 15.11.2026. Die Status-API wurde nur gegen einen simulierten Renderer getestet, nicht mit einer echten KEF. Die Testsuite lief unter Linux (CPython 3.10–3.13) und unter Windows 11 (CPython 3.12.10), Einzelheiten im README, Abschnitt „Tests und Prüfstand“. **Die PowerShell-Beispiele in diesem Dokument wurden bisher nicht ausgeführt.** Die Endpunkte selbst sind mit Python-Clients getestet.
 
 ## Was sie tut und nicht tut
 
 - Nur `GET` und `HEAD`. Jede andere Methode (POST, PUT, DELETE, PATCH, OPTIONS, TRACE …) wird mit 405 abgelehnt. Es gibt keinen Steuerbefehl: kein Stopp, keine Pause, kein Überspringen, keine Lautstärke.
 - Nur lokal: bindet ausschließlich an `127.0.0.1`. Eine andere Bind-Adresse ist weder per Option noch im Code zugelassen.
-- Die Wiedergabe kennt die API nicht. Der Player reicht seine Ereignisse nur an einen Rückruf (`on_event`), den ein Sammler bedient. Am Player-Code (`player.py`, `dsp.py`, `audio.py`, `upnp.py`, `mediaserver.py`, `runlog.py`) wurde für 0.2.0 nichts geändert; angepasst ist nur `cli.py` (Optionen, Start/Stopp) und die Versionsnummer.
+- Die Wiedergabe kennt die API nicht. Der Player reicht seine Ereignisse nur an einen Rückruf (`on_event`), den ein Sammler bedient. Am Player-Code wurde für die API nichts geändert (`Player(on_event=...)` ist unverändert). Gegenüber 0.1.2 geändert sind in 0.2.0 nur `player.py` (Zeitquelle `time.perf_counter()` statt `time.monotonic()`, siehe CHANGELOG), `dsp.py` (nur der Text eines Hinweises, keine DSP-Logik), `cli.py` (Optionen, Start/Stopp) und die Versionsnummer; `audio.py`, `upnp.py`, `mediaserver.py` und `runlog.py` sind unverändert.
 - Die API läuft in eigenen Daemon-Threads. Der Sammler hält sein Schloss nur zum Kopieren des Zustands (Messwert: 15 µs je Ereignis im Test). Sie verändert weder Renderer-Aktionen noch Wiedergabeergebnisse noch die bitgenaue Auslieferung (Test mit 4 parallel abfragenden Clients).
 - Werte, die nicht bekannt sind, stehen als `null` und erscheinen mit Grund in `unknown`. Es wird nichts aus alten Protokolldateien gelesen und nichts geschätzt.
 
@@ -151,13 +151,17 @@ Hinweise: `Set-Content -Encoding utf8` schreibt in Windows PowerShell 5.1 eine B
 
 ## Nicht geprüft / Grenzen
 
-- Echte KEF (Verhalten bei zusätzlichen Abfragen mit `--api-live`), Windows 11 (Port-Belegung, Firewall-Hinweise, Verhalten von `Invoke-RestMethod`), PowerShell 5.1/7 insgesamt.
+- Echte KEF (Verhalten bei zusätzlichen Abfragen mit `--api-live`): nicht geprüft.
+- Windows 11: Die Testsuite (einschließlich der API-Tests zu Bindung und belegtem Port) lief gegen den Simulator. Nicht geprüft sind dort die Firewall-Hinweise und das Verhalten von `Invoke-RestMethod`.
+- PowerShell 5.1/7: Die Beispiele in diesem Dokument wurden bisher nicht ausgeführt.
 - Eine Windows-Firewall-Regel ist nicht nötig, solange nur auf demselben PC abgefragt wird (Loopback).
 - Pause ist ohne `--api-live` nicht erkennbar (`track_active`). Position und Transportstatus gibt es nur live.
 - Der Medienserver-Anfrageverlauf wird nur über die Zusammenfassung je Titel (aus dem Ereignis `track_end`) gelesen, nicht live.
 - Der Medienserver schreibt eine Zeile seines Anfrageprotokolls erst **nach** dem Senden der Antwort (Code in `mediaserver.py`, unverändert). Eine Anfrage, die genau beim Titelende noch läuft, kann deshalb in `requests` fehlen. Im Betrieb nicht beobachtet; im Test `test_server_request_log` zeigt sich dieselbe Reihenfolge als Zeitwettlauf (siehe README, Abschnitt Prüfung). Das betrifft den Player, nicht die API.
 - Titel aus Tags, Interpret, Cover, Playlist-Namen: nicht enthalten.
 
-## Prüfung (Linux, simulierter Renderer)
+## Prüfung (simulierter Renderer)
+
+Die Testsuite (264 Tests) lief unter Linux (CPython 3.10–3.13) und unter Windows 11 (CPython 3.12.10), jeweils gegen den Simulator. Einzelheiten und Versionen stehen im README, Abschnitt „Tests und Prüfstand“.
 
 145 neue Tests in `tests/test_api.py` (Sammler, Datenschutz, Unbekanntes, Befunde, Statistik, JSON/ASCII, Größenlimit), `tests/test_api_server.py` (Bindung, Methoden, Host/Origin, kaputte Anfragen, langsame Clients, Verbindungslimit, Nebenläufigkeit, Beenden, belegter Port), `tests/test_api_integration.py` (Spiegelung des Players, unveränderte Wiedergabe unter Last, null Renderer-Anfragen ohne `--api-live`, nur `Get*` und gedrosselt mit Live, Renderer nicht erreichbar) und `tests/test_api_cli.py` (Standard, `--no-api` ohne Import und ohne Port, widersprüchliche Optionen, belegter Port, Diagnoseexport auch nach Strg+C, Aufräumen). Zusätzlich 14 Sabotageversuche (Host-Prüfung, Methodensperre, Bereinigung, Bind-Adresse, Get-Whitelist, Verbindungslimit, Rückruf-Schutz, Datenschutz-Filter, Origin-Prüfung, Token-Entfernung, Verbergen der Medienserver-Bind-Adresse, Veraltungsgrenze der Live-Werte, `--no-api`-Import, Server-Stopp): jede wurde von mindestens einem Test erkannt.

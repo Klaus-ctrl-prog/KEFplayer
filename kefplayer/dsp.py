@@ -206,8 +206,9 @@ class Profile:
             if f.fc < BASS_LIMIT_HZ and active:
                 out.append(
                     f"Filter {f.type} bei {f.fc:g} Hz liegt im Bassbereich (< {BASS_LIMIT_HZ:g} Hz): "
-                    "Projektregel: Bassabstimmung am PC bleibt bis zum Abschluss des Akustikpakets "
-                    "unangetastet. Wirkt auch auf den Sub-Out der KEF, Doppelkorrektur mit den Saxx-EQs vermeiden."
+                    "wirkt auf das gesamte Signal, das die KEF erhält, und kann damit auch ein Subwoofer-Signal der KEF "
+                    "beeinflussen (an echter Hardware nicht geprüft). "
+                    "Doppelkorrektur mit EQ-Einstellungen von Subwoofer oder KEF vermeiden."
                 )
             elif f.fc >= BASS_LIMIT_HZ and f.gain_db != 0 and f.type in ("peq", "lowshelf", "highshelf"):
                 out.append(
