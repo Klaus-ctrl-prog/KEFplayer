@@ -216,6 +216,23 @@ Filter 5: ON LP Fc 18000 Hz
             dsp.parse_apo(bad)
 
 
+@pytest.mark.parametrize("ms", [0.0, 50.0])
+def test_parse_apo_delay_limits_are_accepted(ms):
+    one = dsp.parse_apo(f"Channel: R\nDelay: {ms} ms\n")
+    assert one.channels[1].delay_ms == ms and 0 not in one.channels
+    both = dsp.parse_apo(f"Delay: {ms} ms\n")
+    assert both.channels[0].delay_ms == ms and both.channels[1].delay_ms == ms
+    dsp.apply_profile(np.zeros((100, 2)), 48000, both)  # Grenzwert ist anwendbar
+
+
+@pytest.mark.parametrize("ms", [-1.0, 100.0])
+def test_parse_apo_delay_outside_0_to_50_ms_is_rejected_at_import(ms):
+    # Gleiche Grenze wie ChannelSpec/JSON, kontrolliert als ValueError mit Zeilennummer (kein Profil, kein Folgefehler).
+    for text in (f"Channel: R\nDelay: {ms} ms\n", f"Channel: L\nDelay: {ms} ms\n", f"Channel: L R\nDelay: {ms} ms\n", f"Delay: {ms} ms\n"):
+        with pytest.raises(ValueError, match=r"Zeile \d+: Delay .*0\.\.50 ms"):
+            dsp.parse_apo(text)
+
+
 def test_example_profiles_load_and_behave():
     from pathlib import Path
     ex = Path(__file__).resolve().parent.parent / "examples"

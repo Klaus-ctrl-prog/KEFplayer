@@ -352,6 +352,8 @@ def parse_apo(text: str, name: str = "apo") -> Profile:
             if "sample" in rest.lower():
                 raise ValueError(f"Zeile {lineno}: Delay in Samples nicht unterstuetzt, bitte in ms angeben")
             ms = _num(rest, lineno)
+            if not 0 <= ms <= MAX_DELAY_MS:  # die Zuweisung unten umgeht ChannelSpec.__post_init__
+                raise ValueError(f"Zeile {lineno}: Delay muss in 0..{MAX_DELAY_MS:g} ms liegen (war {ms:g} ms)")
             for idx in scope if scope is not None else (0, 1):
                 prof.channels.setdefault(idx, ChannelSpec()).delay_ms = ms
         elif low.startswith("filter"):
