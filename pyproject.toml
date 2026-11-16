@@ -20,7 +20,7 @@ test = ["pytest"]
 kefplayer = "kefplayer.cli:main"
 
 [tool.setuptools]
-packages = ["kefplayer"]
+packages = ["kefplayer", "kefplayer.gui"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
