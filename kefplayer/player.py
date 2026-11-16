@@ -45,6 +45,9 @@ def classify_error(exc: BaseException) -> str:
     return "unknown"
 
 
+TRANSIENT_CATEGORIES = ("renderer_timeout", "renderer_unreachable")
+
+
 def classify_prepare_error(exc: BaseException) -> str:
     """Fehlerkategorie fuer das Vorbereiten einer Datei (Lesen, Filtern, Schreiben)."""
     if isinstance(exc, (FileNotFoundError, PermissionError)):
@@ -122,6 +125,8 @@ class Player:
         end_tolerance_s: float = 2.0,
         fast_poll_s: float = 0.05,
         end_window_s: float = 3.0,
+        retry_attempts: int = 3,
+        retry_backoff_s: float = 0.5,
     ):
         self.renderer = renderer
         self.server = server
@@ -144,6 +149,9 @@ class Player:
         # genauere Messwerte. Sonst genuegt das langsamere poll_s.
         self.fast_poll_s = min(fast_poll_s, poll_s)
         self.end_window_s = end_window_s
+        # Begrenzte Wiederholung nur bei voruebergehenden Verbindungsfehlern (Timeout, nicht erreichbar)
+        self.retry_attempts = max(1, int(retry_attempts))
+        self.retry_backoff_s = max(0.0, float(retry_backoff_s))
         self.sink_mimes: list[str] = []
         self._stop = threading.Event()
         self._skip = threading.Event()
@@ -160,6 +168,26 @@ class Player:
 
     def toggle_pause(self) -> None:
         self._pause.set()
+
+    def _call(self, action: str, fn, *args, attempts: int | None = None):
+        """Renderer-Aufruf mit begrenzter Wiederholung (Backoff 1x, 2x, 4x ...) nur bei Timeout/Nichterreichbarkeit.
+        SOAP-Fehler und HTTP-Fehler des Renderers werden nicht wiederholt (deterministisch). Waehrend ein Stopp
+        angefordert ist, wird nicht wiederholt (ausser beim Stop selbst). Der letzte Fehler wird unveraendert gereicht."""
+        n = max(1, attempts if attempts is not None else self.retry_attempts)
+        for k in range(1, n + 1):
+            try:
+                result = fn(*args)
+            except (upnp.UpnpError, OSError) as e:
+                cat = classify_error(e)
+                if k >= n or cat not in TRANSIENT_CATEGORIES or (self._stop.is_set() and action != "stop"):
+                    raise
+                wait = self.retry_backoff_s * 2 ** (k - 1)
+                self._emit("renderer_retry", action=action, attempt=k, of=n, category=cat, error=str(e), wait_s=wait)
+                time.sleep(wait)
+                continue
+            if k > 1:
+                self._emit("renderer_recovered", action=action, attempts=k)
+            return result
 
     def _emit(self, event: str, **kw) -> None:
         rec = self.log.write(event, **kw)
@@ -262,7 +290,7 @@ class Player:
 
     def _safe_stop(self) -> None:
         try:
-            self.renderer.stop()
+            self._call("stop", self.renderer.stop, attempts=min(2, self.retry_attempts))
         except (upnp.UpnpError, OSError) as e:
             self._emit("stop_failed", error=str(e))
 
@@ -293,9 +321,9 @@ class Player:
         }
         self._emit("track_start", **res)
         try:
-            self.renderer.set_uri(url, didl)
+            self._call("set_uri", self.renderer.set_uri, url, didl)
             t_play = _clock()
-            self.renderer.play()
+            self._call("play", self.renderer.play)
             res.update(self._wait(t_play, duration))
         except (upnp.UpnpError, OSError) as e:
             res.update({"end_reason": "error", "error": str(e), "error_category": classify_error(e)})

@@ -360,3 +360,85 @@ def test_ok_track_has_no_error_category(rig, tone_factory):
     mock, server, player = rig()
     res = player.play_queue([src])
     assert res[0]["end_reason"] == "ended" and "error_category" not in res[0]
+
+
+# ---- Wiederholung bei voruebergehenden Fehlern (Phase B2) -------------------------------------------
+
+
+class _Flaky:
+    """Renderer-Attrappe: set_uri/play/stop scheitern n-mal mit dem angegebenen Fehler, dann gelingt der Aufruf."""
+
+    def __init__(self, fails, exc):
+        self.fails, self.exc, self.calls = fails, exc, 0
+
+    def _go(self):
+        self.calls += 1
+        if self.calls <= self.fails:
+            raise self.exc
+        return "ok"
+
+    set_uri = play = stop = lambda self, *a: self._go()
+
+
+def _retry_player(fails, exc, **kw):
+    ev = []
+    r = _Flaky(fails, exc)
+    p = Player(r, None, poll_s=0.001, retry_backoff_s=0.001, on_event=lambda rec: ev.append(rec), **kw)
+    return p, r, ev
+
+
+def test_retry_recovers_after_transient_timeout():
+    import socket
+
+    p, r, ev = _retry_player(2, socket.timeout("t"))
+    assert p._call("play", r.play) == "ok" and r.calls == 3
+    assert [e["event"] for e in ev] == ["renderer_retry", "renderer_retry", "renderer_recovered"]
+    assert ev[0]["category"] == "renderer_timeout" and ev[0]["attempt"] == 1
+
+
+def test_retry_is_limited_and_reraises_last_error():
+    p, r, ev = _retry_player(99, ConnectionRefusedError())
+    with pytest.raises(ConnectionRefusedError):
+        p._call("play", r.play)
+    assert r.calls == 3 and sum(e["event"] == "renderer_retry" for e in ev) == 2
+
+
+def test_soap_fault_is_not_retried():
+    p, r, ev = _retry_player(99, upnp.UpnpError(701, "x"))
+    with pytest.raises(upnp.UpnpError):
+        p._call("play", r.play)
+    assert r.calls == 1 and not ev
+
+
+def test_no_retry_while_stop_requested():
+    p, r, ev = _retry_player(99, ConnectionRefusedError())
+    p._stop.set()
+    with pytest.raises(ConnectionRefusedError):
+        p._call("set_uri", r.set_uri)
+    assert r.calls == 1 and not ev
+
+
+def test_stop_uses_at_most_two_attempts_and_reports_stop_failed():
+    p, r, ev = _retry_player(99, ConnectionRefusedError())
+    p.renderer = r
+    p._safe_stop()
+    assert r.calls == 2 and ev[-1]["event"] == "stop_failed"
+
+
+def test_retry_attempts_one_disables_retry():
+    p, r, ev = _retry_player(99, ConnectionRefusedError(), retry_attempts=1)
+    with pytest.raises(ConnectionRefusedError):
+        p._call("play", r.play)
+    assert r.calls == 1
+
+
+def test_retries_show_up_in_status_findings():
+    from kefplayer import api
+
+    c = api.StatusCollector()
+    c.on_event({"ts": "t", "event": "renderer_retry", "action": "play", "attempt": 1, "category": "renderer_timeout", "error": "x"})
+    c.on_event({"ts": "t", "event": "renderer_recovered", "action": "play", "attempts": 2})
+    app = api.StatusApp(c)
+    snap = c.snapshot()
+    f = [x for x in app.findings(snap, app._live(False)) if x["code"] == "renderer_retries"]
+    assert f and f[0]["evidence"] == {"retries": 1, "recovered": 1}

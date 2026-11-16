@@ -354,6 +354,8 @@ class StatusCollector:
                      error_category=g("error_category"), n_requests=len(g("requests") or []))
         elif ev in ("stop_failed", "cleanup_failed"):
             e.update(error=g("error"), name=_basename(g("path")), _path=g("path"))
+        elif ev in ("renderer_retry", "renderer_recovered"):
+            e.update(action=g("action"), attempt=g("attempt"), category=g("category"), error=g("error"))
         elif ev == "queue_end":
             e.update(played=g("played"), reasons=list(g("reasons") or []))
         else:  # unbekanntes Ereignis: nur die Feldnamen, nie die Werte (koennten Privates enthalten)
@@ -437,6 +439,10 @@ class StatusCollector:
             self._counters["stop_failed"] += 1
         elif ev == "cleanup_failed":
             self._counters["cleanup_failed"] += 1
+        elif ev == "renderer_retry":
+            self._counters["renderer_retry"] += 1
+        elif ev == "renderer_recovered":
+            self._counters["renderer_recovered"] += 1
 
     def count_request(self, key: str) -> None:
         with self._lock:
@@ -506,7 +512,7 @@ def _level_of(e: dict) -> str:
         return "warn" if e.get("ended_early") else "info"
     if ev == "track_start":
         return "warn" if e.get("mime_in_sink") is False else "info"
-    if ev in ("sink_unavailable", "stop_failed", "cleanup_failed"):
+    if ev in ("sink_unavailable", "stop_failed", "cleanup_failed", "renderer_retry"):
         return "warn"
     return "info"
 
@@ -877,6 +883,11 @@ class StatusApp:
             n = snap["counters"].get(key, 0)
             if n:
                 add("warn", code, f"{txt} ({n}x).", count=n)
+        n_retry = snap["counters"].get("renderer_retry", 0)
+        if n_retry:
+            add("warn", "renderer_retries", f"Renderer-Aufrufe wurden {n_retry}x wiederholt "
+                f"({snap['counters'].get('renderer_recovered', 0)}x danach erfolgreich).",
+                retries=n_retry, recovered=snap["counters"].get("renderer_recovered", 0))
         guard = [i for i, p in snap["proc"].items() if p.get("guard_gain_db")]
         if guard:
             add("info", "clipping_guard", f"Clipping-Schutz war bei {len(guard)} Titel(n) aktiv.", count=len(guard))
