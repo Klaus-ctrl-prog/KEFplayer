@@ -12,6 +12,7 @@ import os
 import shutil
 import socket
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,8 @@ from .player import classify_error
 MIN_FREE_WARN_MB = 500.0
 MIN_FREE_ERROR_MB = 50.0
 _RANK = {"ok": 0, "unknown": 1, "warn": 2, "error": 3}
+MIN_INTERVAL_S = 15.0      # Untergrenze: nie haeufiger als alle 15 s (Schutz der KEF vor Dauerabfragen)
+DEFAULT_INTERVAL_S = 30.0
 
 
 def _result(component: str, status: str, category: str, message: str, t0: float | None = None, **evidence) -> dict:
@@ -121,3 +124,116 @@ def run_checks(info: upnp.DeviceInfo | None = None, server=None, cache_dir=None,
 
 def overall(checks: list[dict]) -> str:
     return max((c["status"] for c in checks), key=lambda s: _RANK.get(s, 1), default="unknown")
+
+
+class HealthMonitor:
+    """Periodische Gesundheitspruefung im Hintergrund (ein Daemon-Thread), auch ohne laufende Wiedergabe.
+
+    * Meldet nur Zustandswechsel als Ereignis ``health_change`` (kein Dauerrauschen im Protokoll).
+    * Waehrend ein Titel spielt (``busy()`` ist wahr), gibt es KEINE Renderer-Abfragen; der Player fragt dann selbst.
+      Lokale Pruefungen (Medienserver, Cache) laufen weiter.
+    * Intervall mindestens ``MIN_INTERVAL_S``. Pruefungen sind nur lesend (GetTransportInfo, HTTP-GET).
+    * Ein Fehler in einer Runde beendet den Thread nicht; er wird gezaehlt (``errors``) und im Snapshot gemeldet.
+    """
+
+    def __init__(self, emit, *, info=None, server=None, cache_dir=None, busy=None, interval_s: float = DEFAULT_INTERVAL_S,
+                 timeout_s: float = 3.0, clock=time.monotonic):
+        self._emit = emit
+        self.info, self.server, self.cache_dir = info, server, cache_dir
+        self._busy = busy or (lambda: False)
+        self.interval_s = max(float(interval_s), MIN_INTERVAL_S)
+        self.timeout_s = float(timeout_s)
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._stopped = False
+        self._started_mono: float | None = None
+        self._last_tick_mono: float | None = None
+        self._last_tick_iso: str | None = None
+        self._ticks = 0
+        self._errors = 0
+        self._last_error: str | None = None
+        self._renderer_paused = False
+        self._state: dict[str, dict] = {}
+
+    # -- eine Runde (auch direkt aufrufbar, z. B. in Tests) --
+    def tick(self) -> None:
+        results: list[dict] = []
+        paused = bool(self._busy())
+        if not paused:
+            http = check_renderer_http(self.info, self.timeout_s)
+            if http["status"] == "error":
+                up = _result("renderer_upnp", "unknown", "upnp", "Uebersprungen: Renderer per HTTP nicht erreichbar.")
+            else:
+                up = check_renderer_upnp(self.info, self.timeout_s)
+            results += [http, up]
+        results.append(check_media_server(self.server))
+        results.append(check_cache(self.cache_dir))
+        for r in results:
+            self._update(r)
+        with self._lock:
+            self._ticks += 1
+            self._last_tick_mono = self._clock()
+            self._last_tick_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            self._renderer_paused = paused
+
+    def _update(self, r: dict) -> None:
+        comp = r["component"]
+        with self._lock:
+            prev = self._state.get(comp)
+            changed = prev is None or prev["status"] != r["status"]
+            self._state[comp] = {**r, "since": r["ts"] if changed else prev["since"]}
+        if changed:
+            try:
+                self._emit("health_change", component=comp, status=r["status"], previous=prev["status"] if prev else None,
+                           category=r["category"], message=r["message"], evidence=r["evidence"], latency_ms=r["latency_ms"])
+            except Exception as e:  # noqa: BLE001 - ein defekter Empfaenger darf die Ueberwachung nie beenden
+                with self._lock:
+                    self._errors += 1
+                    self._last_error = f"emit: {type(e).__name__}: {e}"
+
+    # -- Thread --
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self.tick()
+            except Exception as e:  # noqa: BLE001
+                with self._lock:
+                    self._errors += 1
+                    self._last_error = f"{type(e).__name__}: {e}"
+            self._stop.wait(self.interval_s)
+
+    def start(self) -> "HealthMonitor":
+        if self._thread is None:
+            self._started_mono = self._clock()
+            self._thread = threading.Thread(target=self._run, name="kefplayer-health", daemon=True)
+            self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        t = self._thread
+        if t is not None:
+            t.join(self.timeout_s * 2 + 2.0)
+        self._stopped = True
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            comps = {k: dict(v) for k, v in self._state.items()}
+            last_mono, ticks, errors, last_err = self._last_tick_mono, self._ticks, self._errors, self._last_error
+            tick_iso, paused = self._last_tick_iso, self._renderer_paused
+        now = self._clock()
+        age = (now - last_mono) if last_mono is not None else None
+        limit = 3 * self.interval_s + self.timeout_s * 2
+        if self._stopped:
+            state = "stopped"
+        elif self._thread is None:
+            state = "not_started"
+        else:
+            ref = last_mono if last_mono is not None else self._started_mono
+            state = "running" if (self._thread.is_alive() and ref is not None and now - ref <= limit) else "stalled"
+        return {"state": state, "interval_s": self.interval_s, "ticks": ticks, "errors": errors, "last_error": last_err,
+                "last_tick_at": tick_iso, "last_tick_age_s": round(age, 3) if age is not None else None,
+                "renderer_checks_paused": paused, "overall": overall(list(comps.values())) if comps else "unknown",
+                "components": comps}

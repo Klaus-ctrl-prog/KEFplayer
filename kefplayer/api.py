@@ -51,7 +51,7 @@ REJECT_DRAIN_MAX = 65536    # so viele Bytes werden dabei hoechstens gelesen und
 MAX_REJECT_THREADS = 8      # gleichzeitig wartende Abweisungen; darueber wird sofort hart geschlossen
 MIN_LIVE_INTERVAL_S = 0.5
 READ_ONLY_ACTIONS = ("GetTransportInfo", "GetPositionInfo")
-ENDPOINTS = ("status", "renderer", "dsp", "audio", "logs", "diagnostics")
+ENDPOINTS = ("status", "renderer", "dsp", "audio", "logs", "diagnostics", "health")
 
 _OK_END = {"ended", "skipped", "stopped"}
 
@@ -70,6 +70,8 @@ _ERROR_CATEGORY = {
     "source_format": "audio", "processing_error": "dsp", "cache_io": "cache",
 }
 _LEVELS = {"info": 0, "warn": 1, "error": 2}
+_COMPONENT_CATEGORY = {"renderer_http": "renderer", "renderer_upnp": "upnp", "media_server": "media_server", "cache": "cache"}
+_HEALTH_PUBLIC_EVIDENCE = ("transport_state", "port", "free_mb")  # host/dir nur im Detailmodus
 
 
 # ---- kleine Helfer -----------------------------------------------------------------------------
@@ -264,6 +266,7 @@ class StatusCollector:
         self._dropped = 0
         self._cfg: dict = {}
         self._live: LiveProbe | None = None
+        self._health = None
         self._phase = "no_queue"
         self._queue: dict | None = None
         self._queue_end: dict | None = None
@@ -287,6 +290,13 @@ class StatusCollector:
     @property
     def live(self) -> LiveProbe | None:
         return self._live
+
+    def set_health(self, monitor) -> None:
+        self._health = monitor
+
+    @property
+    def health(self):
+        return self._health
 
     def attach(self, *, player=None, renderer=None, server=None, profile=None) -> None:
         cfg: dict = {}
@@ -369,6 +379,10 @@ class StatusCollector:
                      error_category=g("error_category"), n_requests=len(g("requests") or []))
         elif ev in ("stop_failed", "cleanup_failed"):
             e.update(error=g("error"), name=_basename(g("path")), _path=g("path"))
+        elif ev == "health_change":
+            bad = g("status") in ("warn", "error")
+            e.update(component=g("component"), status=g("status"), previous=g("previous"), error_category=g("category"),
+                     error=g("message") if bad else None)
         elif ev in ("renderer_retry", "renderer_recovered"):
             e.update(action=g("action"), attempt=g("attempt"), error_category=g("category"), error=g("error"))
         elif ev == "queue_end":
@@ -526,6 +540,8 @@ def _category_of(e: dict) -> str:
         if ec:
             return _ERROR_CATEGORY.get(ec, "process")
         return "audio" if e.get("end_reason") in _OK_END else "renderer"
+    if ev == "health_change":
+        return _COMPONENT_CATEGORY.get(e.get("component"), "process")
     return _EVENT_CATEGORY.get(ev, "process")
 
 
@@ -538,6 +554,8 @@ def _level_of(e: dict) -> str:
         return "warn" if e.get("ended_early") else "info"
     if ev == "track_start":
         return "warn" if e.get("mime_in_sink") is False else "info"
+    if ev == "health_change":
+        return {"error": "error", "warn": "warn"}.get(e.get("status"), "info")
     if ev in ("sink_unavailable", "stop_failed", "cleanup_failed", "renderer_retry"):
         return "warn"
     return "info"
@@ -853,6 +871,31 @@ class StatusApp:
             u.merge(um, "recent")
         return data, u.map
 
+    # -- health --
+    def health_status(self, snap: dict) -> tuple[dict, dict]:
+        u = _Unknown()
+        mon = self.c.health
+        if mon is None:
+            u.add("monitor", "Gesundheitsueberwachung nicht aktiv (Standard bei 'play'; --no-health schaltet sie ab)")
+            return {"enabled": False, "reason": "Gesundheitsueberwachung nicht aktiv."}, u.map
+        h = mon.snapshot()
+        comps = {}
+        for name, r in h["components"].items():
+            ev = {k: v for k, v in (r.get("evidence") or {}).items() if self.details or k in _HEALTH_PUBLIC_EVIDENCE}
+            comps[name] = {"status": r["status"], "category": _COMPONENT_CATEGORY.get(name, "process"),
+                           "error_category": r.get("category"), "message": scrub(r["message"], self.details),
+                           "latency_ms": r.get("latency_ms"), "last_checked_at": r.get("ts"), "since": r.get("since"),
+                           "evidence": ev}
+        data = {"enabled": True, "overall": h["overall"], "monitor": {k: h[k] for k in (
+            "state", "interval_s", "ticks", "errors", "last_tick_at", "last_tick_age_s", "renderer_checks_paused")},
+            "components": comps,
+            "notes": ["Nur lesende Abfragen (HTTP-GET der Geraetebeschreibung, GetTransportInfo).",
+                      "Waehrend ein Titel spielt, werden keine Renderer-Abfragen gesendet (renderer_checks_paused).",
+                      "Eine blockierende Windows-Firewall ist von hier aus nicht erkennbar."]}
+        if h["last_error"]:
+            data["monitor"]["last_error"] = scrub(h["last_error"], self.details)
+        return data, u.map
+
     # -- logs --
     def logs(self, snap: dict, limit: int, since: int, level: str, category: str | None = None) -> tuple[dict, dict]:
         u = _Unknown()
@@ -919,6 +962,16 @@ class StatusApp:
             add("warn", "renderer_retries", f"Renderer-Aufrufe wurden {n_retry}x wiederholt "
                 f"({snap['counters'].get('renderer_recovered', 0)}x danach erfolgreich).", "renderer",
                 retries=n_retry, recovered=snap["counters"].get("renderer_recovered", 0))
+        h = self.c.health.snapshot() if self.c.health is not None else None
+        if h is not None:
+            for comp, r in h["components"].items():
+                if r["status"] in ("warn", "error"):
+                    add(r["status"], f"health_{comp}", scrub(r["message"], self.details), _COMPONENT_CATEGORY.get(comp, "process"),
+                        r.get("since"), error_category=r.get("category"), latency_ms=r.get("latency_ms"))
+            if h["state"] == "stalled":
+                add("warn", "health_monitor_stalled", "Die Gesundheitsueberwachung liefert keine aktuellen Werte.",
+                    "diagnostics", last_tick_age_s=h["last_tick_age_s"], errors=h["errors"],
+                    last_error=scrub(h["last_error"] or "", self.details))
         guard = [i for i, p in snap["proc"].items() if p.get("guard_gain_db")]
         if guard:
             add("info", "clipping_guard", f"Clipping-Schutz war bei {len(guard)} Titel(n) aktiv.", "dsp", count=len(guard))
@@ -964,6 +1017,7 @@ class StatusApp:
                 "renderer_model": ((rn.get("identity") or {}).get("model_name")),
             },
             "findings": findings,
+            "health": self.health_status(snap)[0],
             "timing": self.timing(snap),
             "status": st, "renderer": rn, "dsp": ds, "audio": au,
             "tracks": tracks, "tracks_omitted": max(0, len(rs) - len(tracks)),
@@ -1107,6 +1161,7 @@ INDEX_TEXT = {
     "audio": "Audio: Quellformat, Zielformat, Verarbeitungspfad",
     "logs": "Letzte Ereignisse und Fehler (limit, since, level)",
     "diagnostics": "Zusammenfassung fuer die technische Analyse (alle Bereiche, Befunde, Zeitstatistik)",
+    "health": "Gesundheit: Renderer (HTTP/UPnP), Medienserver, Cache; Zustand und Ueberwachung",
 }
 
 
@@ -1139,6 +1194,8 @@ def respond(collector: StatusCollector, path: str, query: str = "", final: bool 
         data, unk = app.audio(snap)
     elif endpoint == "logs":
         data, unk = app.logs(snap, q["limit"], q["since"], q["level"], q["category"])
+    elif endpoint == "health":
+        data, unk = app.health_status(snap)
     else:
         data, unk = app.diagnostics(snap, live, q["events"], final=final)
     return 200, _shrink(_envelope(endpoint, data, unk, snap, collector.details), pretty)

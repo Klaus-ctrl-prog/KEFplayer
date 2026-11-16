@@ -154,6 +154,7 @@ class Player:
         self.retry_backoff_s = max(0.0, float(retry_backoff_s))
         self.sink_mimes: list[str] = []
         self._stop = threading.Event()
+        self.track_active = threading.Event()  # gesetzt, solange ein Titel am Renderer vorbereitet/gespielt wird
         self._skip = threading.Event()
         self._pause = threading.Event()
         self._cache: Path | None = None
@@ -188,6 +189,10 @@ class Player:
             if k > 1:
                 self._emit("renderer_recovered", action=action, attempts=k)
             return result
+
+    def emit(self, event: str, **kw) -> None:
+        """Ereignis ueber denselben Weg senden wie der Player selbst (RunLog und Rueckruf)."""
+        self._emit(event, **kw)
 
     def _emit(self, event: str, **kw) -> None:
         rec = self.log.write(event, **kw)
@@ -235,7 +240,11 @@ class Player:
                         self._emit("track_end", **res)
                         results.append(res)
                         continue
-                    res = self._play_one(i, tr, prep, prev_end)
+                    self.track_active.set()
+                    try:
+                        res = self._play_one(i, tr, prep, prev_end)
+                    finally:
+                        self.track_active.clear()
                     prev_end = res.pop("_t_end", None)
                     results.append(res)
                     if self._own_cache and prep.report is not None:
