@@ -351,7 +351,7 @@ class StatusCollector:
             e.update(index=g("index"), name=_basename(g("path")), _path=g("path"), end_reason=g("end_reason"),
                      startup_delay_s=g("startup_delay_s"), wall_s=g("wall_s"), last_position_s=g("last_position_s"),
                      ended_early=g("ended_early"), gap_before_s=g("gap_before_s"), error=g("error"),
-                     n_requests=len(g("requests") or []))
+                     error_category=g("error_category"), n_requests=len(g("requests") or []))
         elif ev in ("stop_failed", "cleanup_failed"):
             e.update(error=g("error"), name=_basename(g("path")), _path=g("path"))
         elif ev == "queue_end":
@@ -418,6 +418,7 @@ class StatusCollector:
                 "startup_delay_s": g("startup_delay_s"), "wall_s": g("wall_s"), "last_position_s": g("last_position_s"),
                 "ended_early": g("ended_early"), "gap_before_s": g("gap_before_s"),
                 "error": str(g("error"))[:1000] if g("error") else None,
+                "error_category": g("error_category"),
                 "requests": {"count": len(reqs), "methods": dict(methods), "statuses": dict(statuses),
                              "bytes_sent": int(sum(sent)) if sent else None,
                              "range_requests": sum(1 for r in reqs if r.get("range"))},
@@ -541,7 +542,8 @@ class StatusApp:
             "end_reason": r.get("end_reason"), "startup_delay_s": r.get("startup_delay_s"),
             "gap_before_s": r.get("gap_before_s"), "wall_s": r.get("wall_s"),
             "last_position_s": r.get("last_position_s"), "ended_early": r.get("ended_early"),
-            "error": scrub(r["error"], self.details) if r.get("error") else None, "requests": r.get("requests"),
+            "error": scrub(r["error"], self.details) if r.get("error") else None,
+            "error_category": r.get("error_category"), "requests": r.get("requests"),
         }
         if self.details:
             out["path"] = r.get("path")
@@ -859,7 +861,7 @@ class StatusApp:
             name = _basename(r.get("path"))
             if r.get("end_reason") not in _OK_END:
                 add("error", "track_problem", f"Titel {r['index'] + 1} endete mit '{r.get('end_reason')}'.",
-                    index=r["index"], name=name, end_reason=r.get("end_reason"),
+                    index=r["index"], name=name, end_reason=r.get("end_reason"), error_category=r.get("error_category"),
                     error=scrub(r["error"], self.details) if r.get("error") else None)
             elif r.get("ended_early"):
                 add("warn", "ended_early", f"Titel {r['index'] + 1} endete frueher als die Dauer.",

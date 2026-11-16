@@ -304,3 +304,59 @@ def test_pause_and_resume(rig, tone_factory):
     names = [act for act, _ in mock.actions]
     assert "Pause" in names and names.count("Play") == 2
     assert res[0]["end_reason"] == "ended" and res[0]["ended_early"] is False
+
+
+# ---- Fehlerklassifikation (Phase B1) ----------------------------------------------------------------
+
+
+def test_classify_error_categories():
+    import socket
+    import urllib.error
+
+    from kefplayer.player import classify_error, classify_prepare_error
+
+    assert classify_error(upnp.UpnpError(701, "x")) == "renderer_soap_fault"
+    assert classify_error(upnp.UpnpError(None, "HTTP 500: kaputt")) == "renderer_http_error"
+    assert classify_error(upnp.UpnpError(None, "SOAP-Antwort ohne Body")) == "renderer_bad_response"
+    assert classify_error(socket.timeout("t")) == "renderer_timeout"
+    assert classify_error(urllib.error.URLError(socket.timeout("t"))) == "renderer_timeout"
+    assert classify_error(ConnectionRefusedError()) == "renderer_unreachable"
+    assert classify_error(urllib.error.URLError("no route")) == "renderer_unreachable"
+    assert classify_error(ValueError("x")) == "unknown"
+    assert classify_prepare_error(FileNotFoundError()) == "source_file_access"
+    assert classify_prepare_error(PermissionError()) == "source_file_access"
+    assert classify_prepare_error(OSError("disk")) == "cache_io"
+    assert classify_prepare_error(ValueError("x")) == "processing_error"
+
+
+def test_prepare_error_has_category(rig, tone_factory, tmp_path):
+    bad = tmp_path / "bad.flac"
+    bad.write_bytes(b"this is not a flac file" * 10)
+    mock, server, player = rig(Profile(filters=[Filter("peq", 2000, -1.0, 1.0)]))
+    res = player.play_queue([bad])
+    assert res[0]["end_reason"] == "prepare_error" and res[0]["error_category"] == "source_format"
+
+
+def test_unreachable_renderer_has_category(rig, tone_factory):
+    src = tone_factory("uc", seconds=0.8)
+    mock, server, player = rig()
+    mock.stop()
+    res = player.play_queue([src])
+    assert res[0]["end_reason"] == "error"
+    assert res[0]["error_category"] in ("renderer_unreachable", "renderer_timeout")
+
+
+def test_never_started_category_follows_media_server_requests(rig, tone_factory):
+    src = tone_factory("ns", seconds=0.8)
+    mock, server, player = rig(mock_kw={"stall": True}, start_timeout_s=0.4)
+    res = player.play_queue([src])
+    assert res[0]["end_reason"] == "never_started"
+    expected = "renderer_fetched_no_play" if res[0]["requests"] else "renderer_never_fetched"
+    assert res[0]["error_category"] == expected
+
+
+def test_ok_track_has_no_error_category(rig, tone_factory):
+    src = tone_factory("ok", seconds=0.8)
+    mock, server, player = rig()
+    res = player.play_queue([src])
+    assert res[0]["end_reason"] == "ended" and "error_category" not in res[0]

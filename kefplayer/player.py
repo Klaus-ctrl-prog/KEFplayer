@@ -8,6 +8,7 @@ Aufloesung dieser Zeiten = Abfrageintervall (poll_s).
 from __future__ import annotations
 
 import re
+import socket
 import tempfile
 import threading
 import time
@@ -26,6 +27,33 @@ from .runlog import RunLog
 _clock = time.perf_counter
 
 AUDIO_EXTS = {".flac", ".wav", ".ogg", ".aif", ".aiff", ".mp3"}
+
+
+def classify_error(exc: BaseException) -> str:
+    """Grobe Fehlerkategorie fuer Renderer-Kommunikation (nur Einordnung des Symptoms, keine Ursachenbehauptung)."""
+    if isinstance(exc, upnp.UpnpError):
+        if exc.code is not None:
+            return "renderer_soap_fault"
+        if exc.description.startswith("HTTP "):
+            return "renderer_http_error"
+        return "renderer_bad_response"
+    reason = getattr(exc, "reason", None)
+    if isinstance(exc, (TimeoutError, socket.timeout)) or isinstance(reason, (TimeoutError, socket.timeout)):
+        return "renderer_timeout"
+    if isinstance(exc, OSError):
+        return "renderer_unreachable"
+    return "unknown"
+
+
+def classify_prepare_error(exc: BaseException) -> str:
+    """Fehlerkategorie fuer das Vorbereiten einer Datei (Lesen, Filtern, Schreiben)."""
+    if isinstance(exc, (FileNotFoundError, PermissionError)):
+        return "source_file_access"
+    if isinstance(exc, sf.LibsndfileError):
+        return "source_format"
+    if isinstance(exc, OSError):
+        return "cache_io"
+    return "processing_error"
 
 
 def collect_files(paths) -> list[Path]:
@@ -174,7 +202,8 @@ class Player:
                     try:
                         prep = futs[i].result()
                     except Exception as e:  # noqa: BLE001 - jede Ursache protokollieren, Warteschlange laeuft weiter
-                        res = {"index": i, "path": str(tr.path), "end_reason": "prepare_error", "error": str(e)}
+                        res = {"index": i, "path": str(tr.path), "end_reason": "prepare_error", "error": str(e),
+                               "error_category": classify_prepare_error(e)}
                         self._emit("track_end", **res)
                         results.append(res)
                         continue
@@ -269,7 +298,7 @@ class Player:
             self.renderer.play()
             res.update(self._wait(t_play, duration))
         except (upnp.UpnpError, OSError) as e:
-            res.update({"end_reason": "error", "error": str(e)})
+            res.update({"end_reason": "error", "error": str(e), "error_category": classify_error(e)})
             self._safe_stop()
         t_playing = res.pop("_t_playing", None)
         if t_playing is not None and prev_end is not None:
@@ -278,6 +307,11 @@ class Player:
             {k: r[k] for k in ("client", "method", "range", "status", "bytes_sent")} for r in self.server.requests_for(token)
         ]
         self.server.unregister(token)
+        if res.get("end_reason") == "never_started":
+            # Einordnung aus vorhandenen Daten: hat der Renderer die Datei beim Medienserver ueberhaupt angefragt?
+            res["error_category"] = "renderer_fetched_no_play" if res["requests"] else "renderer_never_fetched"
+        elif res.get("end_reason") == "timeout":
+            res["error_category"] = "playback_timeout"
         self._emit("track_end", **{k: v for k, v in res.items() if k != "_t_end"})
         return res
 
@@ -348,7 +382,7 @@ class Player:
                 errors += 1
                 if errors >= 5:
                     self._safe_stop()
-                    return finish("error", error=str(e))
+                    return finish("error", error=str(e), error_category=classify_error(e))
             elapsed = now - t_play - paused_total - ((now - paused_since) if paused_since is not None else 0.0)
             if t_playing is None and elapsed > self.start_timeout_s:
                 self._safe_stop()
