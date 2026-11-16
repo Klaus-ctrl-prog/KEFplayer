@@ -90,6 +90,29 @@ def cmd_probe(args) -> int:
     return 0
 
 
+def cmd_health(args) -> int:
+    import json
+
+    from . import health
+
+    try:
+        info = resolve_renderer(args).info
+    except (OSError, upnp.UpnpError):
+        if not (args.renderer and args.renderer.lower().startswith("http")):
+            raise
+        info = upnp.DeviceInfo(location=args.renderer)  # Geraet nicht erreichbar: genau das soll die Pruefung melden
+    checks = health.run_checks(info, None, args.cache_dir, bind=args.bind, port=args.port, timeout=args.timeout)
+    status = health.overall(checks)
+    if args.json:
+        print(json.dumps({"overall": status, "checks": checks}, ensure_ascii=False, indent=2))
+    else:
+        for c in checks:
+            lat = f" ({c['latency_ms']} ms)" if c["latency_ms"] is not None else ""
+            print(f"[{c['status'].upper():7}] {c['component']}: {c['message']}{lat}")
+        print(f"Gesamt: {status}")
+    return 1 if status == "error" else 0
+
+
 def cmd_response(args) -> int:
     prof = load_profile(args.profile)
     fs = args.fs
@@ -309,6 +332,15 @@ def build_parser() -> argparse.ArgumentParser:
     pr = sub.add_parser("probe", help="Renderer abfragen: Geraet, Dienste, gemeldete Formate, Transportstatus")
     _renderer_args(pr)
     pr.set_defaults(func=cmd_probe)
+
+    hl = sub.add_parser("health", help="Einmalige Gesundheitspruefung: Renderer, Medienserver-Port, Cache (Exitcode 1 bei Fehler)")
+    _renderer_args(hl)
+    hl.add_argument("--bind", default="0.0.0.0", help="Bind-Adresse fuer die Portpruefung des Medienservers")
+    hl.add_argument("--port", type=int, default=8765, help="Port des Medienservers (Standard wie bei 'play')")
+    hl.add_argument("--cache-dir", default=None, help="Cache-Verzeichnis (Standard: Temp-Verzeichnis)")
+    hl.add_argument("--timeout", type=float, default=3.0)
+    hl.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    hl.set_defaults(func=cmd_health)
 
     rs = sub.add_parser("response", help="Rechnerischen Frequenzgang eines Profils anzeigen")
     rs.add_argument("--profile", required=True)
