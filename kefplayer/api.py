@@ -54,6 +54,21 @@ READ_ONLY_ACTIONS = ("GetTransportInfo", "GetPositionInfo")
 ENDPOINTS = ("status", "renderer", "dsp", "audio", "logs", "diagnostics")
 
 _OK_END = {"ended", "skipped", "stopped"}
+
+# Kategorien (Phase C): in welchem Teil des Systems liegt der Befund bzw. das Ereignis?
+CATEGORIES = ("renderer", "upnp", "media_server", "audio", "dsp", "cache", "process", "diagnostics")
+_EVENT_CATEGORY = {
+    "queue_start": "process", "queue_end": "process", "sink": "upnp", "sink_unavailable": "upnp",
+    "track_processed": "dsp", "track_start": "audio", "stop_failed": "renderer", "cleanup_failed": "cache",
+    "renderer_retry": "renderer", "renderer_recovered": "renderer",
+}
+# Einordnung der error_category (player.classify_error u. a.) in Systemteile
+_ERROR_CATEGORY = {
+    "renderer_timeout": "renderer", "renderer_unreachable": "renderer", "renderer_fetched_no_play": "renderer",
+    "playback_timeout": "renderer", "renderer_soap_fault": "upnp", "renderer_http_error": "upnp",
+    "renderer_bad_response": "upnp", "renderer_never_fetched": "media_server", "source_file_access": "audio",
+    "source_format": "audio", "processing_error": "dsp", "cache_io": "cache",
+}
 _LEVELS = {"info": 0, "warn": 1, "error": 2}
 
 
@@ -355,11 +370,12 @@ class StatusCollector:
         elif ev in ("stop_failed", "cleanup_failed"):
             e.update(error=g("error"), name=_basename(g("path")), _path=g("path"))
         elif ev in ("renderer_retry", "renderer_recovered"):
-            e.update(action=g("action"), attempt=g("attempt"), category=g("category"), error=g("error"))
+            e.update(action=g("action"), attempt=g("attempt"), error_category=g("category"), error=g("error"))
         elif ev == "queue_end":
             e.update(played=g("played"), reasons=list(g("reasons") or []))
         else:  # unbekanntes Ereignis: nur die Feldnamen, nie die Werte (koennten Privates enthalten)
             e.update(fields=sorted(k for k in rec if k not in ("ts", "event"))[:30])
+        e["category"] = _category_of(e)
         return e
 
     def _update_state(self, ev: str, rec: dict, now: float) -> None:
@@ -503,6 +519,16 @@ class StatusCollector:
 # ---- Darstellung der Endpunkte ----------------------------------------------------------------------------
 
 
+def _category_of(e: dict) -> str:
+    ev = e.get("event")
+    if ev == "track_end":
+        ec = e.get("error_category")
+        if ec:
+            return _ERROR_CATEGORY.get(ec, "process")
+        return "audio" if e.get("end_reason") in _OK_END else "renderer"
+    return _EVENT_CATEGORY.get(ev, "process")
+
+
 def _level_of(e: dict) -> str:
     ev = e.get("event")
     if ev == "track_end":
@@ -538,6 +564,7 @@ class StatusApp:
         if d.get("warnings"):
             d["warnings"] = [scrub(w, self.details, 300) for w in d["warnings"]]
         d["level"] = _level_of(e)
+        d["category"] = e.get("category") or _category_of(e)
         return d
 
     def _track_summary(self, r: dict, snap: dict, proc: bool = True) -> dict:
@@ -827,14 +854,16 @@ class StatusApp:
         return data, u.map
 
     # -- logs --
-    def logs(self, snap: dict, limit: int, since: int, level: str) -> tuple[dict, dict]:
+    def logs(self, snap: dict, limit: int, since: int, level: str, category: str | None = None) -> tuple[dict, dict]:
         u = _Unknown()
         floor = _LEVELS[level]
-        sel = [e for e in snap["events"] if e["seq"] > since and _LEVELS[_level_of(e)] >= floor]
+        sel = [e for e in snap["events"] if e["seq"] > since and _LEVELS[_level_of(e)] >= floor
+               and (category is None or e.get("category") == category)]
         sel = sel[-limit:]
         evs = snap["events"]
         data = {
             "events": [self._ev(e) for e in sel], "returned": len(sel), "limit": limit, "since": since, "level": level,
+            "category": category,
             "newest_seq": snap["seq"], "oldest_seq_in_buffer": evs[0]["seq"] if evs else None,
             "buffer_size": EVENT_BUFFER, "dropped_total": snap["dropped"],
             "scope": "nur Ereignisse dieses Prozesses seit Start; keine Zeilen aus alten Protokolldateien",
@@ -860,51 +889,53 @@ class StatusApp:
     def findings(self, snap: dict, live: dict) -> list[dict]:
         out: list[dict] = []
 
-        def add(level, code, msg, **ev):
-            out.append({"level": level, "code": code, "message": msg, "evidence": ev})
+        def add(level, code, msg, category, ts=None, **ev):
+            # ts: Zeitpunkt des zugrunde liegenden Ereignisses, wenn bekannt; sonst Zeitpunkt der Auswertung
+            out.append({"level": level, "code": code, "category": category, "message": msg,
+                        "ts": ts or snap["now_iso"], "ts_source": "event" if ts else "evaluation", "evidence": ev})
 
         for r in snap["results"]:
             name = _basename(r.get("path"))
             if r.get("end_reason") not in _OK_END:
                 add("error", "track_problem", f"Titel {r['index'] + 1} endete mit '{r.get('end_reason')}'.",
-                    index=r["index"], name=name, end_reason=r.get("end_reason"), error_category=r.get("error_category"),
+                    _ERROR_CATEGORY.get(r.get("error_category"), "renderer"), r.get("ended_at"), index=r["index"], name=name, end_reason=r.get("end_reason"), error_category=r.get("error_category"),
                     error=scrub(r["error"], self.details) if r.get("error") else None)
             elif r.get("ended_early"):
                 add("warn", "ended_early", f"Titel {r['index'] + 1} endete frueher als die Dauer.",
-                    index=r["index"], name=name, last_position_s=r.get("last_position_s"))
+                    "renderer", r.get("ended_at"), index=r["index"], name=name, last_position_s=r.get("last_position_s"))
             if r.get("mime_in_sink") is False:
                 add("warn", "mime_not_in_sink", f"MIME-Typ {r.get('mime')} steht nicht in den Sink-Formaten des Renderers.",
-                    index=r["index"], name=name, mime=r.get("mime"))
+                    "upnp", r.get("ended_at"), index=r["index"], name=name, mime=r.get("mime"))
         if snap["sink"]["state"] == "unavailable":
-            add("warn", "sink_unavailable", "Sink-Formate des Renderers waren nicht lesbar.",
+            add("warn", "sink_unavailable", "Sink-Formate des Renderers waren nicht lesbar.", "upnp", snap["sink"].get("at"),
                 error=scrub(snap["sink"].get("error", ""), self.details))
-        for key, code, txt in (("stop_failed", "stop_failed", "Stop am Renderer schlug fehl"),
-                               ("cleanup_failed", "cleanup_failed", "Temporaere Datei konnte nicht geloescht werden")):
+        for key, code, txt, cat in (("stop_failed", "stop_failed", "Stop am Renderer schlug fehl", "renderer"),
+                                    ("cleanup_failed", "cleanup_failed", "Temporaere Datei konnte nicht geloescht werden", "cache")):
             n = snap["counters"].get(key, 0)
             if n:
-                add("warn", code, f"{txt} ({n}x).", count=n)
+                add("warn", code, f"{txt} ({n}x).", cat, count=n)
         n_retry = snap["counters"].get("renderer_retry", 0)
         if n_retry:
             add("warn", "renderer_retries", f"Renderer-Aufrufe wurden {n_retry}x wiederholt "
-                f"({snap['counters'].get('renderer_recovered', 0)}x danach erfolgreich).",
+                f"({snap['counters'].get('renderer_recovered', 0)}x danach erfolgreich).", "renderer",
                 retries=n_retry, recovered=snap["counters"].get("renderer_recovered", 0))
         guard = [i for i, p in snap["proc"].items() if p.get("guard_gain_db")]
         if guard:
-            add("info", "clipping_guard", f"Clipping-Schutz war bei {len(guard)} Titel(n) aktiv.", count=len(guard))
+            add("info", "clipping_guard", f"Clipping-Schutz war bei {len(guard)} Titel(n) aktiv.", "dsp", count=len(guard))
         if snap["dropped"]:
             add("info", "event_buffer_overflow",
-                f"{snap['dropped']} aeltere Ereignisse wurden aus dem Puffer ({EVENT_BUFFER}) verdraengt.", dropped=snap["dropped"])
+                f"{snap['dropped']} aeltere Ereignisse wurden aus dem Puffer ({EVENT_BUFFER}) verdraengt.", "diagnostics", dropped=snap["dropped"])
         if snap["counters"].get("malformed_events"):
             add("warn", "malformed_events", "Ereignisse ohne gueltigen Titelindex wurden im Zustand nicht beruecksichtigt "
-                "(sie stehen weiter unter /logs).", count=snap["counters"]["malformed_events"])
+                "(sie stehen weiter unter /logs).", "diagnostics", count=snap["counters"]["malformed_events"])
         if snap["counters"].get("hook_errors"):
-            add("warn", "collector_error", "Der Sammler konnte Ereignisse nicht verarbeiten.",
+            add("warn", "collector_error", "Der Sammler konnte Ereignisse nicht verarbeiten.", "diagnostics",
                 count=snap["counters"]["hook_errors"], last=scrub(snap["hook_error"] or "", self.details))
         if snap["api_errors"]:
-            add("warn", "api_error", "Interne Fehler beim Beantworten von API-Anfragen.",
+            add("warn", "api_error", "Interne Fehler beim Beantworten von API-Anfragen.", "diagnostics",
                 count=snap["api_errors"], last=scrub(snap["api_last_error"] or "", self.details))
         if live["enabled"] and live.get("ok") is False:
-            add("warn", "live_probe_failed", "Die letzte Live-Abfrage des Renderers schlug fehl.", error=live.get("error"))
+            add("warn", "live_probe_failed", "Die letzte Live-Abfrage des Renderers schlug fehl.", "renderer", error=live.get("error"))
         return out
 
     def diagnostics(self, snap: dict, live: dict, n_events: int = 100, final: bool = False) -> tuple[dict, dict]:
@@ -928,6 +959,7 @@ class StatusApp:
                 "tracks_finished": len(rs), "end_reasons": dict(reasons),
                 "processed_tracks": sum(1 for r in rs if r.get("processed")),
                 "findings": {"error": counts.get("error", 0), "warn": counts.get("warn", 0), "info": counts.get("info", 0)},
+                "findings_by_category": dict(collections.Counter(f["category"] for f in findings)),
                 "profile": (ds.get("profile") or {}).get("name"),
                 "renderer_model": ((rn.get("identity") or {}).get("model_name")),
             },
@@ -986,7 +1018,7 @@ class QueryError(ValueError):
 def _parse_query(endpoint: str, qs: str) -> dict:
     allowed = {"pretty"}
     if endpoint == "logs":
-        allowed |= {"limit", "since", "level"}
+        allowed |= {"limit", "since", "level", "category"}
     if endpoint == "diagnostics":
         allowed |= {"events"}
     try:
@@ -1021,7 +1053,11 @@ def _parse_query(endpoint: str, qs: str) -> dict:
         level = one("level", "info")
         if level not in _LEVELS:
             raise QueryError("level muss info, warn oder error sein")
-        q.update(limit=integer("limit", 50, 1, MAX_LOG_LIMIT), since=integer("since", 0, 0, 10**9), level=level)
+        category = one("category", None)
+        if category is not None and category not in CATEGORIES:
+            raise QueryError("category muss eine von " + ", ".join(CATEGORIES) + " sein")
+        q.update(limit=integer("limit", 50, 1, MAX_LOG_LIMIT), since=integer("since", 0, 0, 10**9), level=level,
+                 category=category)
     if endpoint == "diagnostics":
         q["events"] = integer("events", 100, 0, MAX_LOG_LIMIT)
     return q
@@ -1102,7 +1138,7 @@ def respond(collector: StatusCollector, path: str, query: str = "", final: bool 
     elif endpoint == "audio":
         data, unk = app.audio(snap)
     elif endpoint == "logs":
-        data, unk = app.logs(snap, q["limit"], q["since"], q["level"])
+        data, unk = app.logs(snap, q["limit"], q["since"], q["level"], q["category"])
     else:
         data, unk = app.diagnostics(snap, live, q["events"], final=final)
     return 200, _shrink(_envelope(endpoint, data, unk, snap, collector.details), pretty)
