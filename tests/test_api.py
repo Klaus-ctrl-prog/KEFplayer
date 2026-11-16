@@ -419,7 +419,7 @@ def test_reading_does_not_mutate_state():
 def test_version_is_reported():
     from kefplayer import __version__
 
-    assert body(api.StatusCollector(), "/api/v1/status")["kefplayer_version"] == __version__ == "0.2.1"
+    assert body(api.StatusCollector(), "/api/v1/status")["kefplayer_version"] == __version__ == "0.3.0"
 
 
 def test_media_server_bind_address_is_redacted_when_it_is_a_lan_ip():
