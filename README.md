@@ -29,6 +29,7 @@ Im Projektordner (dort liegt `pyproject.toml`):
 | `kefplayer probe [--renderer IP-oder-URL]` | Gerät, Dienste, Transportstatus und die vom Gerät gemeldeten Formate (Eigenangabe, kein Wiedergabetest) |
 | `kefplayer response --profile P.json --fs 44100` | Rechnerischen Frequenzgang je Kanal und Preamp anzeigen, ohne etwas abzuspielen |
 | `kefplayer process DATEI... --out ORDNER [--profile P.json]` | Dateien filtern und speichern |
+| `kefplayer health [--renderer IP-oder-URL] [--json]` | Einmalige Gesundheitsprüfung: Renderer (HTTP, UPnP), Port des Medienservers, Cache. Exitcode 1 nur bei `error` (Entwicklungsstand nach 0.3.0) |
 | `kefplayer play DATEI-ODER-ORDNER... [--profile P.json]` | Abspielen auf dem Renderer, Protokoll in `kefplayer_log.jsonl`; lokale, lesende Status-API auf `127.0.0.1:8766` (abschaltbar mit `--no-api`) |
 
 Während `play` im Terminal: `n` = nächster Titel, `p` = Pause/Weiter, `q` = Ende (jeweils mit Enter).
@@ -38,7 +39,7 @@ Wichtige Optionen bei `play`:
 - `--no-dither` (kein TPDF-Dither bei 16 Bit), `--cache-dir` (gefilterte Dateien behalten), `--always-process` (auch ohne Profil neu schreiben).
 - `--poll` (Abfrageintervall, Standard 0,5 s), `--bind-ip` (mehrere Netzwerkkarten/VPN), `--host-ip`, `--port`, `--bind` (Schnittstelle des Medienservers, Standard `0.0.0.0`, siehe „Grenzen“).
 - `--log DATEI`: Protokoll im JSON-Lines-Format. Standardmäßig wird `kefplayer_log.jsonl` verwendet; mit `--log DATEI` lässt sich ein eigener Protokollpfad bzw. Dateiname festlegen (z. B. `--log T01_neutral_16_44.jsonl`).
-- Status-API (ab 0.2.0, Details in `docs/status-api.md`): `--no-api` (ganz aus), `--api-port` (Standard 8766), `--api-live` (Position/Transportstatus per gedrosselter Renderer-Abfrage, Standard aus), `--api-live-interval` (Mindestabstand der Live-Abfragen in Sekunden, mindestens 0,5, Standard 1,0), `--api-details` (Pfade/Gerätedaten zeigen, Standard verborgen), `--diag-file DATEI` (Diagnoseexport am Ende).
+- Status-API (ab 0.2.0, Details in `docs/status-api.md`): `--no-api` (ganz aus), `--api-port` (Standard 8766), `--api-live` (Position/Transportstatus per gedrosselter Renderer-Abfrage, Standard aus), `--api-live-interval` (Mindestabstand der Live-Abfragen in Sekunden, mindestens 0,5, Standard 1,0), `--api-details` (Pfade/Gerätedaten zeigen, Standard verborgen), `--diag-file DATEI` (Diagnoseexport am Ende). Gesundheitsüberwachung (Entwicklungsstand nach 0.3.0, Standard an): `--no-health`, `--health-interval` (Standard 30 s, mindestens 15 s); sie fragt im Leerlauf den Renderer lesend ab, nie während ein Titel spielt (Verhalten an der echten KEF ungeprüft).
 - Falls die KEF Titel ablehnt, sind `--mime audio/x-flac` und `--plain-protocolinfo` Ausweichoptionen. Ob sie nötig sind, ist unverifiziert.
 
 ## Oberfläche (GUI, 0.3.0)
@@ -201,8 +202,8 @@ Erst nach T01 sinnvoll zu entscheiden, weil das Fehlerbild der KEF unbekannt ist
 
 ## Status-API (0.2.0)
 
-- Lokal (nur `127.0.0.1`), nur lesend (GET/HEAD, keine Steuerbefehle), eigenständiges Modul `kefplayer/api.py`, vollständig abschaltbar mit `--no-api` (dann wird das Modul nicht einmal importiert). Endpunkte: `/api/v1/status`, `renderer`, `dsp`, `audio`, `logs`, `diagnostics`. Ausführlich: `docs/status-api.md`.
-- Festlegungen: (1) Port **8766** statt 8765, weil 8765 der Standardport des Medienservers ist. (2) Die API ist bei `play` **standardmäßig an** (ohne Renderer-Abfragen); `--no-api` schaltet sie ab. (3) Position und Transportstatus gibt es nur mit `--api-live` (Standard aus, weil zusätzlicher Verkehr zur KEF). (4) Titel = Dateiname, nicht Tag-Titel.
+- Lokal (nur `127.0.0.1`), nur lesend (GET/HEAD, keine Steuerbefehle), eigenständiges Modul `kefplayer/api.py`, vollständig abschaltbar mit `--no-api` (dann wird das Modul nicht einmal importiert). Endpunkte: `/api/v1/status`, `renderer`, `dsp`, `audio`, `logs`, `diagnostics` (Entwicklungsstand nach 0.3.0 zusätzlich `health`). Ausführlich: `docs/status-api.md`.
+- Festlegungen: (1) Port **8766** statt 8765, weil 8765 der Standardport des Medienservers ist. (2) Die API ist bei `play` **standardmäßig an** (die API selbst sendet keine Renderer-Abfragen; die getrennte Gesundheitsüberwachung des Entwicklungsstands nach 0.3.0 fragt im Leerlauf lesend ab, siehe `docs/status-api.md`); `--no-api` schaltet die API ab. (3) Position und Transportstatus gibt es nur mit `--api-live` (Standard aus, weil zusätzlicher Verkehr zur KEF). (4) Titel = Dateiname, nicht Tag-Titel.
 - Ungetestet: die PowerShell-Beispiele und die echte KEF.
 
 ## Grenzen
