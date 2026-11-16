@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0 (noch nicht veröffentlicht)
+
+Änderungen gegenüber 0.2.1.
+
+### Hinzugefügt
+
+- **Grafische Oberfläche (tkinter/ttk)** im neuen Paket `kefplayer/gui/` (`controller.py`, `viewmodel.py`, `view_main.py`, `texts.py`, `__main__.py`). Start: `python -m kefplayer.gui`; Optionen `--no-dpi` und `--selftest`.
+  - Funktionen: Renderer suchen und verbinden (auch per Adresse), Warteschlange (Dateien oder Ordner hinzufügen, entfernen, nach oben/unten verschieben, leeren), Profil laden (JSON oder Equalizer-APO-Text) oder neutral mit Anzeige der Warnungen, Abspielen, Pause/Weiter, nächster Titel, Stopp, Statusspalte je Titel, Protokollanzeige. Ein fehlerhaftes Profil wird im Protokoll gemeldet, das bisherige Profil bleibt.
+  - Die Oberfläche verwendet den unveränderten Player-Kern und dasselbe Wiedergabeprotokoll (`kefplayer_log.jsonl`) wie `play`. Die Lautstärke des Renderers wird nicht verändert.
+- 51 neue Tests: `tests/test_gui_controller.py` (25), `tests/test_gui_viewmodel.py` (15), `tests/test_gui_view.py` (11). Die Testsuite umfasst damit 679 Tests (0.2.1: 628). Ohne Display werden 11 Tk-Tests übersprungen.
+
+### Geändert
+
+- `pyproject.toml`: `packages` enthält jetzt `kefplayer.gui` (sonst fehlte die Oberfläche in Wheel und sdist); Version 0.3.0. `kefplayer/__init__.py`: Version 0.3.0. `tests/test_api.py`: die eine Zeile, die die Versionsnummer prüft, erwartet jetzt 0.3.0.
+- Sonst keine Änderung an Player-Kern, Kommandozeile, Status-API, DSP-Funktionen oder Profilformat. Keine neue Pflichtabhängigkeit; `tkinter` wird nur für die Oberfläche benötigt, die Kommandozeile importiert die Oberfläche nicht.
+
+### Bekannte Einschränkungen
+
+- Wie bisher: Es wurde **kein echter KEF-Lautsprecher** getestet, auch nicht über die Oberfläche (Hardware-Validierung frühestens ab März 2027).
+- Linux: 679 Tests bestanden mit CPython 3.12.3 (mit Tk unter xvfb); weitere Python-Versionen wurden für 0.3.0 nicht ausgeführt. Windows 11 (CPython 3.12.10): die 51 Tests der Oberfläche bestanden, die volle Testsuite wurde für 0.3.0 unter Windows nicht ausgeführt.
+- Nicht geprüft: das Aussehen mit `--no-dpi` unter Windows und die Statusspalte bei echten Fehlern an der KEF.
+- Pause/Weiter wird nur angefordert, der Zustand wird nicht bestätigt; angezeigt wird die Wandzeit seit Titelstart, keine Wiedergabeposition. Preamp „auto“ wird ohne berechneten Wert angezeigt. Die Fehlermeldung bei einer ungültigen Profildatei nennt die erlaubten Formate nicht. Die Texte der Oberfläche sind ohne Umlaute.
+- Dateien werden beim Hinzufügen im Oberflächen-Thread gelesen (`Controller.add_paths`), und beim Schließen des Fensters wird `self.c.shutdown(10.0)` aufgerufen.
+- Keine Windows-EXE der Oberfläche.
+
 ## 0.2.1 (veröffentlicht am 15.11.2026)
 
 Änderungen gegenüber 0.2.0.
