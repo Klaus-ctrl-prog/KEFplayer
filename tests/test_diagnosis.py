@@ -77,6 +77,27 @@ def test_input_is_not_mutated():
 
 
 
+
+def test_renderer_retry_diagnosis_distinguishes_recovery_from_unrecovered_retries():
+    recovered = diagnose([
+        finding("renderer_retries", retries=2, recovered=1)
+    ])[0]
+    unrecovered = diagnose([
+        finding("renderer_retries", retries=2, recovered=0)
+    ])[0]
+    missing = diagnose([
+        finding("renderer_retries", retries=2)
+    ])[0]
+
+    assert recovered["decision"] == "shadow_propose"
+    assert recovered["cause_hypotheses"][0]["cause"] == "renderer_command_failure_with_recorded_recovery"
+    assert unrecovered["decision"] == "shadow_propose"
+    assert unrecovered["cause_hypotheses"][0]["cause"] == "renderer_command_retry_without_recorded_recovery"
+    assert missing["decision"] == "suppress"
+    assert missing["cause_hypotheses"] == []
+    assert all(item["proposed_action"] is None for item in (recovered, unrecovered, missing))
+
+
 def test_track_problem_classifies_cache_io_without_proposing_a_repair():
     result = diagnose([
         finding("track_problem", "cache", error_category="cache_io")
