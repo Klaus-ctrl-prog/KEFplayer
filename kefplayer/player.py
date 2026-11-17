@@ -423,7 +423,7 @@ class Player:
                     state = r.transport_state()
                     if state == "PLAYING":
                         if t_playing is None:
-                            t_playing = now
+                            t_playing = _clock()
                         if pos is not None:
                             last_pos = pos
                     elif state in ("STOPPED", "NO_MEDIA_PRESENT") and t_playing is not None:
