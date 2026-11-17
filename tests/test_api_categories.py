@@ -186,11 +186,12 @@ def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
     ]
     assert stable(data["findings"]) == stable(expected_findings)
     track = [d for d in data["diagnoses"] if d["symptom"] == "track_problem"]
-    assert len(track) == 1
-    assert track[0]["decision"] == "suppress"
-    assert track[0]["cause_hypotheses"] == []
-    assert track[0]["suppression_reason"] == "no_supported_rule"
-    assert track[0]["proposed_action"] is None
+    assert len(track) == 3
+    assert {d["diagnosis_id"].rsplit(":", 1)[-1] for d in track} == {
+        "renderer_never_fetched", "source_format", "renderer_unreachable",
+    }
+    assert all(d["decision"] == "shadow_propose" for d in track)
+    assert all(d["cause_hypotheses"] for d in track)
     assert all(d["proposed_action"] is None for d in data["diagnoses"])
 
     # Die API-Kette muss unabhängige Befundcodes getrennt an D0 weitergeben.
@@ -205,6 +206,28 @@ def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
     assert cleanup["component"] == "cache"
     assert cleanup["decision"] == "suppress"
     assert sink["symptom"] != cleanup["symptom"]
+
+
+def test_simultaneous_media_server_and_cache_health_findings_remain_independent():
+    c = attached()
+    feed(c, ev("queue_start", tracks=["a"], profile={"name": "p"}, profile_neutral=False,
+               renderer="r", poll_s=0.5))
+    app = api.StatusApp(c)
+    findings = [
+        {"code": "health_media_server", "category": "media_server", "level": "error",
+         "ts": "2026-11-17T10:00:00+00:00", "evidence": {}},
+        {"code": "health_cache", "category": "cache", "level": "error",
+         "ts": "2026-11-17T10:00:01+00:00", "evidence": {}},
+    ]
+    from kefplayer.diagnosis import diagnose
+
+    diagnoses = diagnose(findings)
+    by_symptom = {item["symptom"]: item for item in diagnoses}
+    assert set(by_symptom) == {"health_media_server", "health_cache"}
+    assert by_symptom["health_media_server"]["component"] == "media_server"
+    assert by_symptom["health_cache"]["component"] == "cache"
+    assert all(item["decision"] == "shadow_propose" for item in diagnoses)
+    assert all(item["proposed_action"] is None for item in diagnoses)
 
 def test_operational_findings_do_not_leak_across_playback_queues():
     c = attached()
