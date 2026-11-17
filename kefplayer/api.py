@@ -186,8 +186,8 @@ class LiveProbe:
 
     * Nur auf Anfrage (kein Hintergrund-Polling): Ohne API-Aufruf entsteht kein Netzverkehr.
     * Hoechstens eine Abfrage-Runde je ``interval_s`` (mind. 0.5 s), egal wie viele Clients fragen.
-    * Eigene Renderer-Instanz mit eigenem Timeout; SOAP-Zugriffe werden mit dem Player serialisiert.
-    * Laeuft im aufrufenden HTTP-Thread, nie im Player-Thread.
+    * Eigene Renderer-Instanz mit eigenem Timeout; fragt nur bei freier gemeinsamer Renderer-Sperre ab.
+    * Laeuft im aufrufenden HTTP-Thread, nie im Player-Thread; blockiert die Wiedergabe nicht.
     Beobachtereffekt: Jede Abfrage ist zusaetzlicher Verkehr zur KEF (der Player fragt selbst 2x je poll_s)."""
 
     def __init__(self, renderer_info, interval_s: float = 1.0, timeout_s: float = 2.0, clock=time.monotonic):
@@ -235,11 +235,14 @@ class LiveProbe:
         if refresh and (last is None or now - last["mono"] >= self.interval_s):
             if self._busy.acquire(blocking=False):  # nur ein Abfrager gleichzeitig; die anderen nehmen den Cache
                 try:
-                    # Jede SOAP-Aktion nutzt die gemeinsame Renderer-Sperre. Der Player schuetzt
-                    # zusammengehoerige Aktionspaare; Live-Abfragen koennen zwischen Poll-Runden laufen.
-                    res = self._query()
-                    with self._lock:
-                        self._last = last = res
+                    # Nur abfragen, wenn der Renderer gerade frei ist: Live darf den Player nicht aufhalten.
+                    if self._upnp.RENDERER_LOCK.acquire(blocking=False):
+                        try:
+                            res = self._query()
+                            with self._lock:
+                                self._last = last = res
+                        finally:
+                            self._upnp.RENDERER_LOCK.release()
                 finally:
                     self._busy.release()
         return dict(last) if last else None
