@@ -57,7 +57,11 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
     for (code, track_category), items in sorted(
         grouped.items(), key=lambda pair: (pair[0][0], pair[0][1] or "")
     ):
-        components = {category_components.get(item.get("category"), "process") for item in items}
+        components = {
+            category_components.get(category, "process")
+            if isinstance(category, str) else "process"
+            for category in (item.get("category") for item in items)
+        }
         component = next(iter(components)) if len(components) == 1 else "playback"
         all_evidence = []
         for item in items:
