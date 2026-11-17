@@ -55,7 +55,7 @@ Alle unter `http://127.0.0.1:8766`. `/` und `/api/v1` listen die Endpunkte auf.
 | `/api/v1/dsp` | Aktives Profil, Filter, Preamp-Einstellung, Kanalpegel und -verzögerungen (L/R), je Titel angewendeter Preamp/Spitzenwerte |
 | `/api/v1/audio` | Je Titel Quellformat, Zielformat (gesendet), MIME, „im Sink gemeldet“, Verarbeitungspfad (`original`/`convert`/`dsp`) |
 | `/api/v1/logs` | Letzte Ereignisse dieses Prozesses, Parameter `limit` (1–300, Standard 50), `since` (nur Ereignisse mit größerer `seq`), `level` (`info`/`warn`/`error`), `category` (`renderer`, `upnp`, `media_server`, `audio`, `dsp`, `cache`, `process`, `diagnostics`; ungültig = 400) |
-| `/api/v1/diagnostics` | Zusammenfassung, vorhandene Befunde (`findings`) und konservative D0-Ursachenhypothesen (`diagnoses`), Parameter `events` (0–300, Standard 100) |
+| `/api/v1/diagnostics` | Zusammenfassung, Befunde (`findings`), D0-Ursachenhypothesen (`diagnoses`) und D1-Shadow-Entscheidungen (`repair_decisions`), Parameter `events` (0–300, Standard 100) |
 | `/api/v1/health` | Zustand von Renderer (HTTP und UPnP), Medienserver und Cache sowie der Überwachung selbst (siehe „Gesundheit“) |
 
 Alle Endpunkte akzeptieren `?pretty=1` (eingerückte Ausgabe). Unbekannte oder mehrfach angegebene Parameter werden mit 400 abgelehnt.
@@ -74,6 +74,18 @@ Die Diagnosen werden ausschließlich aus den bereits vorhandenen `findings` abge
 - `verification` ist `not_applicable_d0_no_action`, weil keine Aktion ausgeführt wird.
 
 Gleiche Befundcodes werden grundsätzlich zusammengefasst. Bei `track_problem` erfolgt die Gruppierung zusätzlich nach der konkret belegten `evidence.error_category`: unterschiedliche bekannte Fehlerklassen erhalten getrennte Diagnoseeinträge und können unabhängig bewertet werden. Fehlende oder unbekannte Fehlerklassen bleiben jeweils in eigenen Einträgen ohne Hypothese (`suppress`); sie werden keiner bekannten Ursache zugeordnet. Die Diagnose-ID enthält bei `track_problem` die Fehlerklasse, damit getrennte Einträge eindeutig bleiben. Unbekannte Befundcodes bleiben sichtbar, erhalten aber keine Hypothese. D0 ist damit eine Diagnose-/Beobachtungsschicht und keine Selbstreparatur.
+
+### D1-Shadow-Entscheidungen (`data.repair_decisions`)
+
+D1 bewertet die D0-Hypothesen anhand der vollständigen Originalbefunde und – nur wenn ursachenspezifisch relevant – des Health-Zustands. D1 läuft synchron bei einer Anfrage an `/api/v1/diagnostics`; es gibt keinen Hintergrund-Worker und keine zusätzlichen Renderer-Abfragen. Die Ausgaben sind rein beobachtend:
+
+- `status` ist aktuell `deferred` oder `suppressed`; `eligible` wird in D1 noch nicht vergeben.
+- `reason` nennt den konkreten Zurückstellungs- oder Unterdrückungsgrund.
+- `scope` ist nur nach exakter Korrelation der vollständigen D0-Evidenz mit den Originalbefunden `queue` oder `process`; andernfalls `unknown`.
+- `finding_count` zählt die zugeordneten Originalbefunde. `simulated` ist immer `true`, `repair_executed` immer `false`.
+- Auch bei passender Evidenz und gesundem erforderlichem Health-Zustand bleibt die Entscheidung `deferred` mit `no_repair_action_approved_in_d1`: D1 enthält noch keine freigegebene Reparaturaktion.
+
+D1 verändert weder Findings noch D0-Diagnosen, Retry-Zähler oder Player-Zustand. Es führt keine Reparatur, keinen Neustart und keinen zusätzlichen Renderer-Befehl aus. Die detaillierte Feld- und Reason-Referenz sowie PowerShell-Beispiele stehen in [D1 – Shadow-Entscheidungen](repair-decisions.md).
 
 ### Antwortrahmen
 
