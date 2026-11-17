@@ -227,7 +227,7 @@ def test_player_waits_for_inflight_health_check_before_sink_protocol_info(env, t
     monitor_thread.join(2)
     player_thread.join(5)
     assert not monitor_thread.is_alive() and not player_thread.is_alive()
-    assert any(a.get("action") == "GetProtocolInfo" for a in mock.actions)
+    assert any(a[0] == "GetProtocolInfo" for a in mock.actions)
     assert len(result) == 1 and result[0]["end_reason"] in ("ended", "timeout")
 
 
