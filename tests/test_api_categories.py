@@ -111,3 +111,19 @@ def test_unknown_event_gets_default_category():
     feed(c, ev("something_new", x=1))
     e = body(c, "/api/v1/logs")["data"]["events"][0]
     assert e["category"] == "process"
+
+
+
+def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
+    c = _run_with_problems()
+    data = body(c, "/api/v1/diagnostics")["data"]
+
+    assert data["diagnoses"]
+    assert len(data["findings"]) == len(body(c, "/api/v1/diagnostics")["data"]["findings"])
+    track = [d for d in data["diagnoses"] if d["symptom"] == "track_problem"]
+    assert len(track) == 1
+    assert track[0]["decision"] == "suppress"
+    assert track[0]["cause_hypotheses"] == []
+    assert track[0]["suppression_reason"] == "no_supported_rule"
+    assert track[0]["proposed_action"] is None
+    assert all(d["proposed_action"] is None for d in data["diagnoses"])
