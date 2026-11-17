@@ -1000,7 +1000,8 @@ class StatusApp:
             add("warn", "api_error", "Interne Fehler beim Beantworten von API-Anfragen.", "diagnostics",
                 count=snap["api_errors"], last=scrub(snap["api_last_error"] or "", self.details))
         if live["enabled"] and live.get("ok") is False:
-            add("warn", "live_probe_failed", "Die letzte Live-Abfrage des Renderers schlug fehl.", "renderer", error=live.get("error"))
+            add("warn", "live_probe_failed", "Die letzte Live-Abfrage des Renderers schlug fehl.", "renderer",
+                error=scrub(live.get("error") or "", self.details))
         return out
 
     def diagnostics(self, snap: dict, live: dict, n_events: int = 100, final: bool = False) -> tuple[dict, dict]:
