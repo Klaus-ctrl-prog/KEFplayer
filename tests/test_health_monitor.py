@@ -213,17 +213,14 @@ def test_player_start_and_health_check_transition_are_serialized(env, tmp_path, 
         assert release.wait(2)
         return real_http(*args, **kwargs)
 
+    player = Player(upnp.Renderer(info), server, log=RunLog(None), poll_s=0.02)
+    player._load_sink = lambda: (sink_entered.set(), sink_release.wait(2))
+    monitor = _mon(env, busy=player.track_active.is_set)
     monkeypatch.setattr(health, "check_renderer_http", blocked_http)
-    monitor = _mon(env)
     monitor_thread = threading.Thread(target=monitor.tick)
     monitor_thread.start()
     assert entered.wait(2)
 
-    player = Player(upnp.Renderer(info), server, log=RunLog(None), poll_s=0.02)
-    monitor = _mon(env, busy=player.track_active.is_set)
-    # Der Monitor wird nach dem Player angelegt, damit er dessen Sitzungsstatus
-    # waehrend der gesamten Wiedergabe korrekt auswertet.
-    player._load_sink = lambda: (sink_entered.set(), sink_release.wait(2))
     source = tone_factory("serialized-start", seconds=0.5)
     result = []
     player_thread = threading.Thread(target=lambda: result.extend(player.play_queue([source])))
@@ -246,7 +243,6 @@ def test_player_start_and_health_check_transition_are_serialized(env, tmp_path, 
     player_thread.join(5)
     assert not player_thread.is_alive()
     assert len(result) == 1 and not player.track_active.is_set()
-
 
 def test_player_waits_for_inflight_health_check_before_sink_protocol_info(env, tmp_path, tone_factory, monkeypatch):
     mock, server, info, tmp, events, emit = env
