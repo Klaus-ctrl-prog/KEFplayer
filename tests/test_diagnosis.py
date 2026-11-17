@@ -132,6 +132,16 @@ def test_mixed_retry_recovery_evidence_is_suppressed():
     assert result["cause_hypotheses"] == []
     assert result["suppression_reason"] == "no_supported_rule"
 
+def test_boolean_retry_recovery_evidence_is_suppressed():
+    result = diagnose([
+        finding("renderer_retries", retries=2, recovered=False)
+    ])[0]
+
+    assert result["decision"] == "suppress"
+    assert result["cause_hypotheses"] == []
+    assert result["suppression_reason"] == "no_supported_rule"
+
+
 
 def test_simultaneous_renderer_and_media_server_findings_stay_separate():
     result = diagnose([
