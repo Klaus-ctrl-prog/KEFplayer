@@ -18,7 +18,7 @@ Alles Folgende ist rein additiv (`api_version` bleibt 1) und wurde nur gegen den
 
 - Nur `GET` und `HEAD`. Jede andere Methode (POST, PUT, DELETE, PATCH, OPTIONS, TRACE …) wird mit 405 abgelehnt. Es gibt keinen Steuerbefehl: kein Stopp, keine Pause, kein Überspringen, keine Lautstärke.
 - Nur lokal: bindet ausschließlich an `127.0.0.1`. Eine andere Bind-Adresse ist weder per Option noch im Code zugelassen.
-- Die Wiedergabe kennt die API nicht. Der Player reicht seine Ereignisse nur an einen Rückruf (`on_event`), den ein Sammler bedient. Am Player-Code wurde für die API nichts geändert (`Player(on_event=...)` ist unverändert). Gegenüber 0.1.2 geändert sind in 0.2.0 nur `player.py` (Zeitquelle `time.perf_counter()` statt `time.monotonic()`, siehe CHANGELOG), `dsp.py` (nur der Text eines Hinweises, keine DSP-Logik), `cli.py` (Optionen, Start/Stopp) und die Versionsnummer; `audio.py`, `upnp.py`, `mediaserver.py` und `runlog.py` sind unverändert.
+- Die Wiedergabe kennt die API nicht. Der Player reicht seine Ereignisse nur an einen Rückruf (`on_event`), den ein Sammler bedient. Für die API selbst (0.2.0) wurde am Player-Code nichts geändert (`Player(on_event=...)` ist unverändert). Gegenüber 0.1.2 geändert sind in 0.2.0 nur `player.py` (Zeitquelle `time.perf_counter()` statt `time.monotonic()`, siehe CHANGELOG), `dsp.py` (nur der Text eines Hinweises, keine DSP-Logik), `cli.py` (Optionen, Start/Stopp) und die Versionsnummer; `audio.py`, `upnp.py`, `mediaserver.py` und `runlog.py` sind unverändert. **Änderungsstand nach 0.3.0 (B1–C4):** geändert sind `player.py` (Fehlerklassifikation, Wiederholung, `track_active`, `emit()`), `api.py` (Kategorien, Zeitstempel, Gesundheit), `cli.py` (`health`, Überwachung in `play`) und neu `health.py`; `audio.py`, `dsp.py`, `upnp.py`, `mediaserver.py` und `runlog.py` sind gegenüber 0.3.0 unverändert.
 - Die API läuft in eigenen Daemon-Threads. Der Sammler hält sein Schloss nur zum Kopieren des Zustands (Messwert: 15 µs je Ereignis im Test). Sie verändert weder Renderer-Aktionen noch Wiedergabeergebnisse noch die bitgenaue Auslieferung (Test mit 4 parallel abfragenden Clients).
 - Werte, die nicht bekannt sind, stehen als `null` und erscheinen mit Grund in `unknown`. Es wird nichts aus alten Protokolldateien gelesen und nichts geschätzt.
 
@@ -156,6 +156,9 @@ Die Gesundheitsüberwachung (`kefplayer/health.py`) läuft bei `play` standardm�
 - Wie die echte KEF auf periodische `GetTransportInfo`-Abfragen im Leerlauf reagiert, ist **nicht geprüft**.
 - Eine Windows-Firewall, die eingehende Verbindungen vom Renderer blockiert, ist von hier aus **nicht erkennbar** (lokale Verbindungen umgehen sie). Ein Hinweis darauf ist nur `renderer_never_fetched`.
 - Ein Titelstart kann mit einer gerade laufenden Prüfrunde zusammenfallen; das kostet höchstens eine zusätzliche Abfrage.
+- Ein Health-Status `ok` bestätigt nur die Erreichbarkeit der jeweils geprüften Dienste (HTTP-Gerätebeschreibung, `GetTransportInfo`, lokaler Medienserver, Cache), **nicht** die vollständige Funktionsfähigkeit der KEF.
+- `renderer_unreachable` fasst unterschiedliche Ursachen von `OSError` zusammen (z. B. Verbindung verweigert, zurückgesetzt, kein Weg zum Host, Namensauflösung, lokale Socket-Fehler). Die Kategorie nennt das Symptom, nicht die Ursache.
+- Das Verhalten der realen KEF im Standby ist **nicht geprüft**. Ob und wie sie dort auf HTTP- und UPnP-Abfragen antwortet, ist unbekannt.
 
 ## Diagnoseexport
 
