@@ -1,6 +1,36 @@
 # Changelog
 
-## 0.3.0 (noch nicht veröffentlicht)
+## 0.4.0 (noch nicht veröffentlicht)
+
+Änderungen gegenüber 0.3.0 (Tag `v0.3.0`, Commit `f2d880c`). Stand: `main` am 17.11.2026. Es gibt noch **keinen** Tag und kein Release 0.4.0.
+
+### Hinzugefügt
+
+- **Fehlerklassifikation und Wiederholung** (B1/B2): Fehler beim Vorbereiten und bei Renderer-Aufrufen werden in Kategorien eingeordnet; vorübergehende Fehler werden begrenzt wiederholt.
+- **Gesundheitsprüfung und -überwachung** (C1–C3): neues Modul `kefplayer/health.py` mit Prüfungen für Renderer (HTTP, UPnP), Medienserver und Cache, Kommando `kefplayer health` und ein Hintergrund-Monitor (Standard an, `--no-health` schaltet ihn ab, `--health-interval` Standard 30 s, mindestens 15 s). Der Monitor sendet nie Renderer-Abfragen, während ein Titel spielt. Neuer Endpunkt `/api/v1/health`.
+- **Status-API** (C4): Fehlerkategorien und Befunde in den Endpunkten; Beschreibung in `docs/status-api.md`.
+- **D0 Diagnose** (`kefplayer/diagnosis.py`): deterministische Gruppierung der Befunde mit vorsichtigen Ursachenhypothesen. Rein lesend.
+- **D1 Schattenentscheidungen** (`kefplayer/repair_decision.py`, `docs/repair-decisions.md`): bewertet D0-Hypothesen gegen Originalbefunde und Health-Zustand; Status nur `deferred` oder `suppressed`, nie `eligible`; keine Seiteneffekte. Ausgegeben unter `repair_decisions` im Diagnose-Endpunkt.
+- **D2 Opt-in-Reparatur** (`kefplayer/repair_exec.py`, `kefplayer/repair_budget.py`, `docs/repair-d2.md`): Standard **aus**. Nur mit `kefplayer play --enable-repair` (nicht zusammen mit `--no-health`) wird eine einzige Aktion ausgeführt: R5, Neustart eines hängenden Diagnose-Monitors. Nie während ein Titel spielt, nie `RENDERER_LOCK`, Versuchsbudget mit Pause und Flapping-Sperre, Prüfung nach dem Neustart, Ereignisse `repair_start`/`repair_result`/`repair_blocked` im Protokoll und Abschnitt `repair` in `/api/v1/health`.
+- Neue Tests für alle genannten Teile (u. a. D1-Invarianten, Regressionstests, Simulator); die Testsuite umfasst 837 Tests.
+
+### Behoben
+
+- D0/D1: Gruppenkollision zwischen Befunden gleichen Codes und Evidenz-Aliasing; Härtung gegen fehlerhafte Kategorien und Eingaben.
+- Health-Monitor: Zustand beim Beenden (`stopping`/`stopped`).
+
+### Geändert
+
+- Version 0.4.0 in `pyproject.toml` und `kefplayer/__init__.py`; `tests/test_api.py` erwartet 0.4.0.
+- Der Diagnose-Endpunkt enthält zusätzliche Felder (`repair_decisions`); der Health-Endpunkt den Abschnitt `repair`.
+
+### Bekannte Einschränkungen
+
+- Es wurde **kein echter KEF-Lautsprecher** getestet; alle Nachweise stammen aus dem Simulator (Hardware-Validierung frühestens ab März 2027). Das Verhalten von Health-Monitor und R5 an der echten KEF Gen1 ist ungeprüft.
+- Weitere Reparaturaktionen (R1 Medienserver neu starten, R3 Renderer neu auflösen) sind **nicht** enthalten; sie liegen ungemergt in PR #10.
+- CI (GitHub Actions) lief für den D2-Merge auf Ubuntu und Windows grün; ein manueller Windows-Lauf mit dem Release-ZIP wurde für 0.4.0 nicht gemacht.
+
+## 0.3.0
 
 Änderungen gegenüber 0.2.1.
 

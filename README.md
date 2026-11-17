@@ -2,7 +2,7 @@
 
 KEFplayer spielt Audiodateien (FLAC/WAV) per UPnP/DLNA auf einem Renderer ab (Ziel: KEF LS50 Wireless Gen1) und kann die Dateien vorher mit einem Filterprofil bearbeiten (PEQ, Preamp mit automatischem Headroom, Pegel/Delay je Kanal). Pro Titel wird protokolliert, was tatsächlich gesendet wurde und wie sich der Renderer verhielt.
 
-Version 0.3.0 (grafische Oberfläche als zusätzlicher Einstieg, Kern unverändert gegenüber 0.2.1; Status-API seit 0.2.0). Python-Paket und Befehl heißen `kefplayer`. Lizenz: MIT. Änderungen: siehe [CHANGELOG.md](CHANGELOG.md).
+Version 0.4.0 (noch nicht veröffentlicht; Fehlerklassifikation, Gesundheitsüberwachung, D0/D1-Diagnose und optionale Reparatur R5, siehe CHANGELOG). Letzte veröffentlichte Fassung: 0.3.0 (grafische Oberfläche; Status-API seit 0.2.0). Python-Paket und Befehl heißen `kefplayer`. Lizenz: MIT. Änderungen: siehe [CHANGELOG.md](CHANGELOG.md).
 
 > **Stand der Prüfung:** Getestet wurde bisher nur gegen einen **simulierten Renderer**. **Ein echter KEF-Lautsprecher wurde noch nicht getestet.** Die Validierung mit echter Hardware steht aus und ist frühestens ab März 2027 vorgesehen. Es gibt keine Aussage über einen nachgewiesenen Klanggewinn oder eine validierte Kompatibilität mit KEF-Hardware.
 
