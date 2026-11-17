@@ -198,6 +198,39 @@ def test_health_skips_renderer_when_shared_lock_is_held(env):
     assert "renderer_upnp" in m.snapshot()["components"]
 
 
+def test_player_waits_for_inflight_health_check_before_sink_protocol_info(env, tmp_path, tone_factory, monkeypatch):
+    mock, server, info, tmp, events, emit = env
+    entered = threading.Event()
+    release = threading.Event()
+    real_http = health.check_renderer_http
+
+    def blocked_http(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return real_http(*args, **kwargs)
+
+    monkeypatch.setattr(health, "check_renderer_http", blocked_http)
+    monitor = _mon(env)
+    monitor_thread = threading.Thread(target=monitor.tick)
+    monitor_thread.start()
+    assert entered.wait(2)
+
+    player = Player(upnp.Renderer(info), server, log=RunLog(None), poll_s=0.02)
+    source = tone_factory("startup-lock", seconds=0.2)
+    result = []
+    player_thread = threading.Thread(target=lambda: result.extend(player.play_queue([source])))
+    player_thread.start()
+    assert wait_for(lambda: player.track_active.is_set())
+    # Health prueft gerade HTTP; Player darf GetProtocolInfo erst nach Freigabe senden.
+    assert mock.actions == []
+    release.set()
+    monitor_thread.join(2)
+    player_thread.join(5)
+    assert not monitor_thread.is_alive() and not player_thread.is_alive()
+    assert any(a.get("action") == "GetProtocolInfo" for a in mock.actions)
+    assert len(result) == 1 and result[0]["end_reason"] in ("ended", "timeout")
+
+
 def test_player_track_active_flag(rig, tone_factory):
     mock, server, player = rig()
     seen = []
