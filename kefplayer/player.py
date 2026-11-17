@@ -186,7 +186,9 @@ class Player:
                     raise
                 wait = self.retry_backoff_s * 2 ** (k - 1)
                 self._emit("renderer_retry", action=action, attempt=k, of=n, category=cat, error=str(e), wait_s=wait)
-                if self._stop.wait(wait) and action != "stop":
+                if action == "stop":
+                    time.sleep(wait)
+                elif self._stop.wait(wait):
                     raise
                 continue
             if k > 1:
