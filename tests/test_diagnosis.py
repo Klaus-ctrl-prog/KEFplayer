@@ -220,3 +220,13 @@ def test_same_supported_track_problem_category_remains_diagnosable_when_repeated
     assert len(result["evidence"]) == 3
     assert result["evidence_omitted"] == 0
 
+
+def test_unhashable_finding_category_falls_back_to_process_component():
+    result = diagnose([
+        finding("new_unclassified_code", ["malformed", "category"])
+    ])[0]
+
+    assert result["component"] == "process"
+    assert result["decision"] == "suppress"
+    assert result["cause_hypotheses"] == []
+    assert result["suppression_reason"] == "no_supported_rule"
