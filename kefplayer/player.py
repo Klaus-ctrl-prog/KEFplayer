@@ -210,8 +210,10 @@ class Player:
         else:
             self._cache, self._own_cache = self.cache_dir, False
         self.track_active.set()
-        upnp.RENDERER_LOCK.acquire()
+        renderer_lock_acquired = False
         try:
+            upnp.RENDERER_LOCK.acquire()
+            renderer_lock_acquired = True
             self._emit(
                 "queue_start",
                 tracks=[str(t.path) for t in tracks],
@@ -248,13 +250,14 @@ class Player:
                     if self._own_cache and prep.report is not None:
                         self._remove(prep.path)
         finally:
+            if renderer_lock_acquired:
+                upnp.RENDERER_LOCK.release()
+            self.track_active.clear()
             try:
                 self._emit("queue_end", played=len(results), reasons=[r.get("end_reason") for r in results])
+            finally:
                 if tmp:
                     tmp.cleanup()
-            finally:
-                upnp.RENDERER_LOCK.release()
-                self.track_active.clear()
         return results
 
     def _load_sink(self) -> None:

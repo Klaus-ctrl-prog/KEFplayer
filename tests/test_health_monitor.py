@@ -140,7 +140,7 @@ def test_no_monitor_requests_to_renderer_during_track(env, tmp_path, tone_factor
 
 
 def test_renderer_soap_calls_share_one_lock(env, monkeypatch):
-    # Zwei voneinander unabhhaengige Renderer-Objekte muessen dieselbe Sperre nutzen.
+    # Zwei voneinander unabhaengige Renderer-Objekte muessen dieselbe Sperre nutzen.
     entered = threading.Event()
     release = threading.Event()
     calls = []
