@@ -81,6 +81,8 @@ def _health_reason(causes: list[str], health: dict[str, Any] | None) -> str | No
             item = components.get(name)
             if not isinstance(item, dict) or item.get("status") in (None, "unknown"):
                 return "required_health_unknown"
+            if item.get("status") != "ok":
+                return "required_health_not_ok"
     return None
 
 
