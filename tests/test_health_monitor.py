@@ -220,6 +220,9 @@ def test_player_start_and_health_check_transition_are_serialized(env, tmp_path, 
     assert entered.wait(2)
 
     player = Player(upnp.Renderer(info), server, log=RunLog(None), poll_s=0.02)
+    monitor = _mon(env, busy=player.track_active.is_set)
+    # Der Monitor wird nach dem Player angelegt, damit er dessen Sitzungsstatus
+    # waehrend der gesamten Wiedergabe korrekt auswertet.
     player._load_sink = lambda: (sink_entered.set(), sink_release.wait(2))
     source = tone_factory("serialized-start", seconds=0.5)
     result = []
