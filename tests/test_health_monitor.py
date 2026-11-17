@@ -334,6 +334,41 @@ def test_thread_runs_periodically_and_stops(env):
     assert not [t for t in threading.enumerate() if t.name == "kefplayer-health"]
 
 
+def test_stop_timeout_reports_stopping_until_thread_exits(env, monkeypatch):
+    entered = threading.Event()
+    release = threading.Event()
+    original_check_cache = health.check_cache
+
+    def blocked_cache(*args, **kwargs):
+        entered.set()
+        release.wait(5.0)
+        return original_check_cache(*args, **kwargs)
+
+    monkeypatch.setattr(health, "check_cache", blocked_cache)
+
+    m = _mon(env)
+    m.timeout_s = 0.01
+    m.start()
+
+    try:
+        assert entered.wait(3.0), "Health-Pruefrunde wurde nicht gestartet"
+
+        m.stop()
+
+        snap = m.snapshot()
+        assert snap["state"] == "stopping"
+        assert m._thread.is_alive()
+
+        release.set()
+
+        assert wait_for(lambda: m.snapshot()["state"] == "stopped")
+        assert not m._thread.is_alive()
+
+    finally:
+        release.set()
+        m.stop()
+
+
 def test_round_error_is_counted_and_thread_survives(env, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("kaputt")

@@ -235,7 +235,9 @@ class HealthMonitor:
         t = self._thread
         if t is not None:
             t.join(self.timeout_s * 2 + 2.0)
-        self._stopped = True
+            self._stopped = not t.is_alive()
+        else:
+            self._stopped = True
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -249,9 +251,15 @@ class HealthMonitor:
             state = "stopped"
         elif self._thread is None:
             state = "not_started"
+        elif self._stop.is_set():
+            state = "stopping" if self._thread.is_alive() else "stopped"
         else:
             ref = last_mono if last_mono is not None else self._started_mono
-            state = "running" if (self._thread.is_alive() and ref is not None and now - ref <= limit) else "stalled"
+            state = "running" if (
+                self._thread.is_alive()
+                and ref is not None
+                and now - ref <= limit
+            ) else "stalled"
         return {"state": state, "interval_s": self.interval_s, "ticks": ticks, "errors": errors, "last_error": last_err,
                 "last_tick_at": tick_iso, "last_tick_age_s": round(age, 3) if age is not None else None,
                 "renderer_checks_paused": paused, "overall": overall(list(comps.values())) if comps else "unknown",
