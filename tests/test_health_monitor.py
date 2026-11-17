@@ -198,6 +198,53 @@ def test_health_skips_renderer_when_shared_lock_is_held(env):
     assert "renderer_upnp" in m.snapshot()["components"]
 
 
+def test_player_start_and_health_check_transition_are_serialized(env, tmp_path, tone_factory, monkeypatch):
+    mock, server, info, tmp, events, emit = env
+    entered = threading.Event()
+    release = threading.Event()
+    sink_entered = threading.Event()
+    sink_release = threading.Event()
+    real_http = health.check_renderer_http
+    stamps = []
+
+    def blocked_http(*args, **kwargs):
+        stamps.append(time.perf_counter())
+        entered.set()
+        assert release.wait(2)
+        return real_http(*args, **kwargs)
+
+    monkeypatch.setattr(health, "check_renderer_http", blocked_http)
+    monitor = _mon(env)
+    monitor_thread = threading.Thread(target=monitor.tick)
+    monitor_thread.start()
+    assert entered.wait(2)
+
+    player = Player(upnp.Renderer(info), server, log=RunLog(None), poll_s=0.02)
+    player._load_sink = lambda: (sink_entered.set(), sink_release.wait(2))
+    source = tone_factory("serialized-start", seconds=0.5)
+    result = []
+    player_thread = threading.Thread(target=lambda: result.extend(player.play_queue([source])))
+    player_thread.start()
+
+    # Solange Health die Sperre haelt, darf der Player die Sitzung noch nicht
+    # als aktiv markieren. Nach Freigabe muss Health fertig sein, bevor der
+    # Player den aktiven Zustand setzt.
+    assert not player.track_active.is_set()
+    release.set()
+    monitor_thread.join(2)
+    assert not monitor_thread.is_alive()
+    assert sink_entered.wait(2)
+    assert player.track_active.is_set()
+
+    before = len(stamps)
+    monitor.tick()
+    assert len(stamps) == before
+    sink_release.set()
+    player_thread.join(5)
+    assert not player_thread.is_alive()
+    assert len(result) == 1 and not player.track_active.is_set()
+
+
 def test_player_waits_for_inflight_health_check_before_sink_protocol_info(env, tmp_path, tone_factory, monkeypatch):
     mock, server, info, tmp, events, emit = env
     entered = threading.Event()

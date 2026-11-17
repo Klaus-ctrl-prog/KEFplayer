@@ -160,23 +160,24 @@ class HealthMonitor:
     # -- eine Runde (auch direkt aufrufbar, z. B. in Tests) --
     def tick(self) -> None:
         results: list[dict] = []
-        paused = bool(self._busy())
-        # Nicht warten: waehrend einer Wiedergabesitzung Renderer-Pruefungen auslassen,
-        # lokale Pruefungen aber weiter ausfuehren. Das erfasst auch den Start vor dem
-        # ersten Track und faengt eine bereits laufende Monitor-Runde sicher ab.
+        # Sperre zuerst erwerben und den Wiedergabestatus erst danach pruefen.
+        # Der Player setzt/loescht track_active unter derselben Sperre. Dadurch ist
+        # der Uebergang atomar: Entweder endet die Health-Abfrage vor dem Start,
+        # oder sie sieht die aktive Wiedergabesitzung und laesst den Renderer aus.
         renderer_lock = upnp.RENDERER_LOCK
-        if not paused and renderer_lock.acquire(blocking=False):
+        paused = True
+        if renderer_lock.acquire(blocking=False):
             try:
-                http = check_renderer_http(self.info, self.timeout_s)
-                if http["status"] == "error":
-                    up = _result("renderer_upnp", "unknown", "upnp", "Uebersprungen: Renderer per HTTP nicht erreichbar.")
-                else:
-                    up = check_renderer_upnp(self.info, self.timeout_s)
-                results += [http, up]
+                paused = bool(self._busy())
+                if not paused:
+                    http = check_renderer_http(self.info, self.timeout_s)
+                    if http["status"] == "error":
+                        up = _result("renderer_upnp", "unknown", "upnp", "Uebersprungen: Renderer per HTTP nicht erreichbar.")
+                    else:
+                        up = check_renderer_upnp(self.info, self.timeout_s)
+                    results += [http, up]
             finally:
                 renderer_lock.release()
-        else:
-            paused = True
         results.append(check_media_server(self.server))
         results.append(check_cache(self.cache_dir))
         for r in results:

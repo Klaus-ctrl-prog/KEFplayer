@@ -209,7 +209,9 @@ class Player:
             self._cache, self._own_cache = Path(tmp.name), True
         else:
             self._cache, self._own_cache = self.cache_dir, False
-        self.track_active.set()
+        # Wiedergabestart mit HealthMonitor/LiveProbe synchronisieren.
+        with upnp.RENDERER_LOCK:
+            self.track_active.set()
         try:
             self._emit(
                 "queue_start",
@@ -247,7 +249,8 @@ class Player:
                     if self._own_cache and prep.report is not None:
                         self._remove(prep.path)
         finally:
-            self.track_active.clear()
+            with upnp.RENDERER_LOCK:
+                self.track_active.clear()
             try:
                 self._emit("queue_end", played=len(results), reasons=[r.get("end_reason") for r in results])
             finally:
