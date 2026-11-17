@@ -97,9 +97,9 @@ Das Ereignis `sink` enthält die vom Gerät gemeldeten Formate. `cleanup_failed`
 
 ## Tests und Prüfstand
 
-**Aktueller Entwicklungsstand im PR #2 (Branch `phase-bc-diagnose-health`, Commit `9c0f2de`, 17.11.2026):** GitHub Actions hat die vollständige Testsuite mit 769 gesammelten Tests auf beiden Plattformen erfolgreich ausgeführt:
+**Aktueller Entwicklungsstand im PR #2 (Branch `phase-bc-diagnose-health`, Commit `23905b0`, 17.11.2026):** GitHub Actions hat die vollständige Testsuite mit 769 gesammelten Tests auf beiden Plattformen erfolgreich ausgeführt:
 
-- [Windows, Python 3.12 — Run 44059392714](https://github.com/Klaus-ctrl-prog/KEFplayer/actions/runs/44059392714): 756 bestanden, 13 übersprungen, 0 fehlgeschlagen. Davon 12 wegen fehlender zusätzlicher `np.longdouble)-Präzision unter Windows/MSVC und einer wegen nicht verfügbarem Tk-Display.
+- [Windows, Python 3.12 — Run 44060967035](https://github.com/Klaus-ctrl-prog/KEFplayer/actions/runs/44059392714): 756 bestanden, 13 übersprungen, 0 fehlgeschlagen. Davon 12 wegen fehlender zusätzlicher `np.longdouble-Präzision unter Windows/MSVC und einer wegen nicht verfügbarem Tk-Display.
 - [Ubuntu — Run 44059392714](https://github.com/Klaus-ctrl-prog/KEFplayer/actions/runs/44059392714): 758 bestanden, 11 übersprungen, 0 fehlgeschlagen. Die übersprungenen GUI-Tests benötigen ein Display.
 - Beide CI-Jobs verwenden den Renderer-Simulator. Das ist kein Nachweis für das Verhalten einer realen KEF. Der PR bleibt offen und ungemergt.
 
