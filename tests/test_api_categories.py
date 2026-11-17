@@ -173,3 +173,44 @@ def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
     assert track[0]["suppression_reason"] == "no_supported_rule"
     assert track[0]["proposed_action"] is None
     assert all(d["proposed_action"] is None for d in data["diagnoses"])
+
+def test_operational_findings_do_not_leak_across_playback_queues():
+    c = attached()
+    feed(c,
+         ev("queue_start", tracks=["a"], profile={"name": "p"}, profile_neutral=False, renderer="r", poll_s=0.5),
+         ev("renderer_retry", action="play", attempt=1, of=2, category="renderer_timeout", error="t", wait_s=0.5),
+         ev("renderer_recovered", action="play", attempt=2, of=2, category="renderer_timeout", error="t"),
+         ev("stop_failed", error="stop"),
+         ev("cleanup_failed", error="cleanup", path="temp"))
+    first = body(c, "/api/v1/diagnostics")["data"]
+    first_by_code = {item["code"]: item for item in first["findings"]}
+    assert first_by_code["renderer_retries"]["evidence"]["retries"] == 1
+    assert first_by_code["renderer_retries"]["evidence"]["recovered"] == 1
+    assert first_by_code["stop_failed"]["evidence"]["count"] == 1
+    assert first_by_code["cleanup_failed"]["evidence"]["count"] == 1
+    assert all(item["evidence"]["queue_started_at"] for item in first["findings"]
+               if item["code"] in {"renderer_retries", "stop_failed", "cleanup_failed"})
+
+    feed(c, ev("queue_end", played=1, reasons=[]),
+         ev("queue_start", tracks=["b"], profile={"name": "p"}, profile_neutral=False, renderer="r", poll_s=0.5))
+    second = body(c, "/api/v1/diagnostics")["data"]
+    second_codes = {item["code"] for item in second["findings"]}
+    assert not ({"renderer_retries", "stop_failed", "cleanup_failed"} & second_codes)
+
+
+def test_retry_recovery_counts_are_not_combined_across_playback_queues():
+    c = attached()
+    feed(c,
+         ev("queue_start", tracks=["a"], profile={"name": "p"}, profile_neutral=False, renderer="r", poll_s=0.5),
+         ev("renderer_retry", action="play", attempt=1, of=2, category="renderer_timeout", error="t", wait_s=0.5),
+         ev("renderer_recovered", action="play", attempt=2, of=2, category="renderer_timeout", error="t"),
+         ev("queue_end", played=1, reasons=[]),
+         ev("queue_start", tracks=["b"], profile={"name": "p"}, profile_neutral=False, renderer="r", poll_s=0.5),
+         ev("renderer_retry", action="play", attempt=1, of=2, category="renderer_timeout", error="t", wait_s=0.5))
+    data = body(c, "/api/v1/diagnostics")["data"]
+    retry = next(item for item in data["findings"] if item["code"] == "renderer_retries")
+    assert retry["evidence"]["retries"] == 1
+    assert retry["evidence"]["recovered"] == 0
+    diagnosis = next(item for item in data["diagnoses"] if item["symptom"] == "renderer_retries")
+    assert diagnosis["cause_hypotheses"][0]["cause"] == "renderer_command_retry_without_recorded_recovery"
+
