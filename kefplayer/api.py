@@ -302,6 +302,13 @@ class StatusCollector:
     def set_health(self, monitor) -> None:
         self._health = monitor
 
+    def set_repair(self, supervisor) -> None:
+        self._repair = supervisor
+
+    @property
+    def repair(self):
+        return getattr(self, "_repair", None)
+
     @property
     def health(self):
         return self._health
@@ -893,6 +900,15 @@ class StatusApp:
         return data, u.map
 
     # -- health --
+    def _repair_status(self) -> dict:
+        sup = self.c.repair
+        if sup is None:
+            return {"enabled": False, "reason": "D2 nicht aktiviert (--enable-repair); nur D1-Schattenentscheidungen."}
+        try:
+            return sup.status()
+        except Exception:  # noqa: BLE001
+            return {"enabled": True, "status": "unknown"}
+
     def health_status(self, snap: dict) -> tuple[dict, dict]:
         u = _Unknown()
         mon = self.c.health
@@ -910,6 +926,7 @@ class StatusApp:
         data = {"enabled": True, "overall": h["overall"], "monitor": {k: h[k] for k in (
             "state", "interval_s", "ticks", "errors", "last_tick_at", "last_tick_age_s", "renderer_checks_paused")},
             "components": comps,
+            "repair": self._repair_status(),
             "notes": ["Nur lesende Abfragen (HTTP-GET der Geraetebeschreibung, GetTransportInfo).",
                       "Waehrend ein Titel spielt, werden keine Renderer-Abfragen gesendet (renderer_checks_paused).",
                       "Eine blockierende Windows-Firewall ist von hier aus nicht erkennbar."]}

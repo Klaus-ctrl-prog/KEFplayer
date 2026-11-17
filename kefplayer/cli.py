@@ -199,6 +199,12 @@ def _check_api_args(args) -> None:
         sys.exit("--api-live-interval: mindestens 0.5 s (sonst zu viel zusaetzlicher Verkehr zur KEF).")
 
 
+def _check_repair_args(args) -> None:
+    """--enable-repair braucht die Gesundheitsueberwachung (sie ist der einzige reparierbare Teil)."""
+    if getattr(args, "enable_repair", False) and args.no_health:
+        sys.exit("--enable-repair geht nicht zusammen mit --no-health (nichts zu ueberwachen).")
+
+
 def _start_api(api_mod, collector, args):
     """API-Server starten. Ein belegter Port ist kein Grund, die Wiedergabe abzubrechen."""
     try:
@@ -229,6 +235,7 @@ def _finish_api(api_mod, collector, srv, args) -> None:
 
 def cmd_play(args) -> int:
     _check_api_args(args)
+    _check_repair_args(args)
     files = collect_files(args.inputs)
     if not files:
         sys.exit("Keine Audiodateien gefunden")
@@ -275,6 +282,23 @@ def cmd_play(args) -> int:
                 collector.set_live(api_mod.LiveProbe(renderer.info, interval_s=args.api_live_interval))
         except Exception as e:  # noqa: BLE001 - die API darf die Wiedergabe nie verhindern
             _err(f"Warnung: Status-API unvollstaendig eingerichtet ({type(e).__name__}: {e})")
+    supervisor = None
+    if monitor is not None and args.enable_repair:
+        from .repair_exec import RepairSupervisor
+
+        def _make_monitor():
+            return HealthMonitor(player.emit, info=renderer.info, server=server, cache_dir=args.cache_dir,
+                                 busy=player.track_active.is_set, interval_s=args.health_interval)
+
+        def _on_swap(new):
+            if collector is not None:
+                collector.set_health(new)
+
+        supervisor = RepairSupervisor(monitor, _make_monitor, busy=player.track_active.is_set,
+                                      emit=player.emit, on_swap=_on_swap)
+        if collector is not None:
+            collector.set_repair(supervisor)
+        print("Reparatur: AN (--enable-repair): nur R5 (Diagnose-Monitor neu starten), nie waehrend ein Titel spielt.")
     if sys.stdin is not None and sys.stdin.isatty():
         print("Eingabe + Enter: n = naechster Titel, p = Pause/Weiter, q = Ende")
 
@@ -295,6 +319,8 @@ def cmd_play(args) -> int:
             api_srv = _start_api(api_mod, collector, args)
         if monitor is not None:
             monitor.start()
+        if supervisor is not None:
+            supervisor.start()
         results = player.play_queue(files)
     except KeyboardInterrupt:
         player.stop()
@@ -305,6 +331,9 @@ def cmd_play(args) -> int:
         print("\nAbgebrochen.")
         return 130
     finally:
+        if supervisor is not None:
+            supervisor.stop()
+            monitor = supervisor.monitor  # evtl. ersetzter Monitor
         if monitor is not None:
             monitor.stop()  # vor dem Medienserver, sonst meldet die letzte Runde ihn als ausgefallen
         if collector is not None:
@@ -390,6 +419,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help=f"Port der Status-API auf 127.0.0.1 (Standard {API_DEFAULT_PORT}; 0 = beliebig)")
     pl.add_argument("--no-health", action="store_true",
                     help="Gesundheitsueberwachung aus (Standard: an; fragt im Leerlauf den Renderer lesend ab, nie waehrend ein Titel spielt)")
+    pl.add_argument("--enable-repair", action="store_true",
+                    help="D2 Opt-in (Standard: AUS, dann nur D1-Schattenentscheidungen): fuehrt R5 aus "
+                         "(haengenden Diagnose-Monitor neu starten), nie waehrend ein Titel spielt, mit Budget und Audit-Log")
     pl.add_argument("--health-interval", type=float, default=30.0,
                     help="Abstand der Gesundheitspruefung in Sekunden (Standard 30, mindestens 15)")
     pl.add_argument("--api-live", action="store_true",
