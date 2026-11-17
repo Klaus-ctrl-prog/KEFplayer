@@ -69,7 +69,7 @@ Die Diagnosen werden ausschließlich aus den bereits vorhandenen `findings` abge
 - `observe`: Nur im internen Modus `off`; es wird ausschließlich beobachtet.
 - `proposed_action` ist in D0 immer `null`. Es gibt keinen Reparaturcode.
 - `confidence` ist `low`, `medium` oder `unknown`; `high` wird in D0 nicht vergeben.
-- `evidence` enthält die zugehörigen vorhandenen Befunde einschließlich Kategorie, Zeitstempel und Evidenzdaten.
+- `evidence` enthält bis zu 25 zugehörige vorhandene Befunde einschließlich Kategorie, Zeitstempel und Evidenzdaten. Weitere Befunde werden nicht dupliziert; ihre Anzahl steht in `evidence_omitted`. Die Hypothesenregeln werten weiterhin alle Befunde aus, nicht nur die angezeigten 25.
 - `verification` ist `not_applicable_d0_no_action`, weil keine Aktion ausgeführt wird.
 
 Gleiche Befundcodes werden zunächst zusammengefasst. Bei `track_problem` führen unterschiedliche Fehlerklassen innerhalb dieser Gruppe bewusst zur Unterdrückung statt zu einer pauschalen Ursache. Unbekannte Befundcodes bleiben sichtbar, erhalten aber keine Hypothese. D0 ist damit eine Diagnose-/Beobachtungsschicht und keine Selbstreparatur.
@@ -110,7 +110,7 @@ Fehler: `{"api_version":1,"error":{"status":404,"message":"…"}}` mit passendem
 Standard (`--api-details` nicht gesetzt):
 
 - Keine Verzeichnispfade (nur Dateinamen), keine Renderer-IP, -UDN, -URL und kein Gerätename, keine Medienserver-Adresse, keine Client-IPs der Renderer-Anfragen.
-- Fehlertexte werden bereinigt: URLs (enthalten das Zugriffs-Token des Medienservers), Pfade (Windows, UNC, POSIX) und IPv4-Adressen werden ersetzt. Das ist **Best Effort**, keine Garantie. Dateinamen mit Leerzeichen in ungequoteten Pfaden können Reste hinterlassen. Einen Export vor dem Weitergeben ansehen.
+- Fehlertexte werden bereinigt: URLs (enthalten das Zugriffs-Token des Medienservers), Pfade (Windows, UNC, POSIX) und IPv4-Adressen werden ersetzt. Das gilt auch für Fehlertexte fehlgeschlagener Live-Proben, bevor sie in Befunde und D0-Evidenz übernommen werden. Das ist **Best Effort**, keine Garantie. Dateinamen mit Leerzeichen in ungequoteten Pfaden können Reste hinterlassen. Einen Export vor dem Weitergeben ansehen.
 - Unbekannte Ereignisarten erscheinen nur mit Feldnamen, nie mit Werten.
 - Sichtbar bleiben: Dateinamen, Hersteller/Modell, Formate, Zeiten, Profil (Name, Filter, Pegel, Delays), Python-/Betriebssystem-/Bibliotheksversionen (kein Rechnername).
 
