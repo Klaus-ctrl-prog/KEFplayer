@@ -210,10 +210,7 @@ class Player:
         else:
             self._cache, self._own_cache = self.cache_dir, False
         self.track_active.set()
-        renderer_lock_acquired = False
         try:
-            upnp.RENDERER_LOCK.acquire()
-            renderer_lock_acquired = True
             self._emit(
                 "queue_start",
                 tracks=[str(t.path) for t in tracks],
@@ -250,8 +247,6 @@ class Player:
                     if self._own_cache and prep.report is not None:
                         self._remove(prep.path)
         finally:
-            if renderer_lock_acquired:
-                upnp.RENDERER_LOCK.release()
             self.track_active.clear()
             try:
                 self._emit("queue_end", played=len(results), reasons=[r.get("end_reason") for r in results])
@@ -335,9 +330,11 @@ class Player:
         }
         self._emit("track_start", **res)
         try:
-            self._call("set_uri", self.renderer.set_uri, url, didl)
-            t_play = _clock()
-            self._call("play", self.renderer.play)
+            # URI setzen und Play als zusammengehoerige Startsequenz schuetzen.
+            with upnp.RENDERER_LOCK:
+                self._call("set_uri", self.renderer.set_uri, url, didl)
+                t_play = _clock()
+                self._call("play", self.renderer.play)
             res.update(self._wait(t_play, duration))
         except (upnp.UpnpError, OSError) as e:
             res.update({"end_reason": "error", "error": str(e), "error_category": classify_error(e)})
@@ -393,32 +390,35 @@ class Player:
                 self._safe_stop()
                 return finish("skipped")
             try:
-                if self._pause.is_set():
-                    self._pause.clear()
+                # Die zwei Statusabfragen gehoeren zusammen; LiveProbe darf zwischen
+                # Poll-Runden zugreifen, aber nicht zwischen Position und Transportstatus.
+                with upnp.RENDERER_LOCK:
+                    if self._pause.is_set():
+                        self._pause.clear()
+                        state = r.transport_state()
+                        if state == "PLAYING":
+                            r.pause()
+                            paused_since = now
+                        elif state == "PAUSED_PLAYBACK":
+                            r.play()
+                            if paused_since is not None:
+                                paused_total += now - paused_since
+                            paused_since = None
+                    # Erst Position, dann Status: Nur wenn der Status danach noch PLAYING ist, war die Position
+                    # gueltig. Umgekehrt liefert ein Renderer, der zwischen den zwei Abfragen stoppt, Position 0
+                    # und das Titelende wuerde faelschlich als "zu frueh" gemeldet.
+                    try:
+                        pos = r.position_s()
+                    except upnp.UpnpError:
+                        pos = None  # manche Renderer melden ausserhalb von PLAYING einen Fehler
                     state = r.transport_state()
                     if state == "PLAYING":
-                        r.pause()
-                        paused_since = now
-                    elif state == "PAUSED_PLAYBACK":
-                        r.play()
-                        if paused_since is not None:
-                            paused_total += now - paused_since
-                        paused_since = None
-                # Erst Position, dann Status: Nur wenn der Status danach noch PLAYING ist, war die Position
-                # gueltig. Umgekehrt liefert ein Renderer, der zwischen den zwei Abfragen stoppt, Position 0
-                # und das Titelende wuerde faelschlich als "zu frueh" gemeldet.
-                try:
-                    pos = r.position_s()
-                except upnp.UpnpError:
-                    pos = None  # manche Renderer melden ausserhalb von PLAYING einen Fehler
-                state = r.transport_state()
-                if state == "PLAYING":
-                    if t_playing is None:
-                        t_playing = now
-                    if pos is not None:
-                        last_pos = pos
-                elif state in ("STOPPED", "NO_MEDIA_PRESENT") and t_playing is not None:
-                    return finish("ended")
+                        if t_playing is None:
+                            t_playing = now
+                        if pos is not None:
+                            last_pos = pos
+                    elif state in ("STOPPED", "NO_MEDIA_PRESENT") and t_playing is not None:
+                        return finish("ended")
                 errors = 0
             except (upnp.UpnpError, OSError) as e:
                 errors += 1
