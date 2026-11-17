@@ -90,6 +90,29 @@ def cmd_probe(args) -> int:
     return 0
 
 
+def cmd_health(args) -> int:
+    import json
+
+    from . import health
+
+    try:
+        info = resolve_renderer(args).info
+    except (OSError, upnp.UpnpError):
+        if not (args.renderer and args.renderer.lower().startswith("http")):
+            raise
+        info = upnp.DeviceInfo(location=args.renderer)  # Geraet nicht erreichbar: genau das soll die Pruefung melden
+    checks = health.run_checks(info, None, args.cache_dir, bind=args.bind, port=args.port, timeout=args.timeout)
+    status = health.overall(checks)
+    if args.json:
+        print(json.dumps({"overall": status, "checks": checks}, ensure_ascii=False, indent=2))
+    else:
+        for c in checks:
+            lat = f" ({c['latency_ms']} ms)" if c["latency_ms"] is not None else ""
+            print(f"[{c['status'].upper():7}] {c['component']}: {c['message']}{lat}")
+        print(f"Gesamt: {status}")
+    return 1 if status == "error" else 0
+
+
 def cmd_response(args) -> int:
     prof = load_profile(args.profile)
     fs = args.fs
@@ -151,6 +174,10 @@ def _print_event(rec: dict) -> None:
         if rec.get("error"):
             extra.append(rec["error"])
         print(f"  Ende: {rec['end_reason']}" + (" (" + "; ".join(extra) + ")" if extra else ""))
+    elif ev == "health_change":
+        bad = ("warn", "error")
+        if rec["status"] in bad or rec.get("previous") in bad:  # nur Probleme und deren Behebung, kein "ok"-Rauschen
+            print(f"Gesundheit: {rec['component']}: {rec.get('previous') or '-'} -> {rec['status']} ({rec['message']})")
 
 
 API_DEFAULT_PORT = 8766  # 8765 ist der Standardport des Medienservers; Test sichert Gleichheit mit api.DEFAULT_PORT
@@ -233,6 +260,14 @@ def cmd_play(args) -> int:
         on_event=on_event, poll_s=args.poll, serve_original_if_neutral=not args.always_process,
         plain_protocolinfo=args.plain_protocolinfo, mime_override=args.mime,
     )
+    monitor = None
+    if not args.no_health:
+        from .health import HealthMonitor
+
+        monitor = HealthMonitor(player.emit, info=renderer.info, server=server, cache_dir=args.cache_dir,
+                                busy=player.track_active.is_set, interval_s=args.health_interval)
+        if collector is not None:
+            collector.set_health(monitor)
     if collector is not None:
         try:
             collector.attach(player=player, renderer=renderer, server=server, profile=prof)
@@ -258,6 +293,8 @@ def cmd_play(args) -> int:
     try:
         if collector is not None:
             api_srv = _start_api(api_mod, collector, args)
+        if monitor is not None:
+            monitor.start()
         results = player.play_queue(files)
     except KeyboardInterrupt:
         player.stop()
@@ -268,6 +305,8 @@ def cmd_play(args) -> int:
         print("\nAbgebrochen.")
         return 130
     finally:
+        if monitor is not None:
+            monitor.stop()  # vor dem Medienserver, sonst meldet die letzte Runde ihn als ausgefallen
         if collector is not None:
             _finish_api(api_mod, collector, api_srv, args)
         server.stop()
@@ -310,6 +349,15 @@ def build_parser() -> argparse.ArgumentParser:
     _renderer_args(pr)
     pr.set_defaults(func=cmd_probe)
 
+    hl = sub.add_parser("health", help="Einmalige Gesundheitspruefung: Renderer, Medienserver-Port, Cache (Exitcode 1 bei Fehler)")
+    _renderer_args(hl)
+    hl.add_argument("--bind", default="0.0.0.0", help="Bind-Adresse fuer die Portpruefung des Medienservers")
+    hl.add_argument("--port", type=int, default=8765, help="Port des Medienservers (Standard wie bei 'play')")
+    hl.add_argument("--cache-dir", default=None, help="Cache-Verzeichnis (Standard: Temp-Verzeichnis)")
+    hl.add_argument("--timeout", type=float, default=3.0)
+    hl.add_argument("--json", action="store_true", help="Ausgabe als JSON")
+    hl.set_defaults(func=cmd_health)
+
     rs = sub.add_parser("response", help="Rechnerischen Frequenzgang eines Profils anzeigen")
     rs.add_argument("--profile", required=True)
     rs.add_argument("--fs", type=float, default=44100.0)
@@ -340,6 +388,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="lokale Status-API vollstaendig aus (Standard: an, nur 127.0.0.1, nur lesend)")
     pl.add_argument("--api-port", type=int, default=API_DEFAULT_PORT,
                     help=f"Port der Status-API auf 127.0.0.1 (Standard {API_DEFAULT_PORT}; 0 = beliebig)")
+    pl.add_argument("--no-health", action="store_true",
+                    help="Gesundheitsueberwachung aus (Standard: an; fragt im Leerlauf den Renderer lesend ab, nie waehrend ein Titel spielt)")
+    pl.add_argument("--health-interval", type=float, default=30.0,
+                    help="Abstand der Gesundheitspruefung in Sekunden (Standard 30, mindestens 15)")
     pl.add_argument("--api-live", action="store_true",
                     help="Position/Transportstatus per gedrosselter, nur lesender Renderer-Abfrage liefern "
                          "(zusaetzlicher Verkehr zur KEF; Standard: aus)")

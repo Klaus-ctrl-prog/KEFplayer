@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from kefplayer import upnp
+from kefplayer import audio, upnp
 from kefplayer.dsp import ChannelSpec, Filter, Profile
 from kefplayer.mediaserver import MediaServer
 from kefplayer.player import Player
@@ -304,3 +304,172 @@ def test_pause_and_resume(rig, tone_factory):
     names = [act for act, _ in mock.actions]
     assert "Pause" in names and names.count("Play") == 2
     assert res[0]["end_reason"] == "ended" and res[0]["ended_early"] is False
+
+
+# ---- Fehlerklassifikation (Phase B1) ----------------------------------------------------------------
+
+
+def test_classify_error_categories():
+    import socket
+    import urllib.error
+
+    from kefplayer.player import classify_error, classify_prepare_error
+
+    assert classify_error(upnp.UpnpError(701, "x")) == "renderer_soap_fault"
+    assert classify_error(upnp.UpnpError(None, "HTTP 500: kaputt")) == "renderer_http_error"
+    assert classify_error(upnp.UpnpError(None, "SOAP-Antwort ohne Body")) == "renderer_bad_response"
+    assert classify_error(socket.timeout("t")) == "renderer_timeout"
+    assert classify_error(urllib.error.URLError(socket.timeout("t"))) == "renderer_timeout"
+    assert classify_error(ConnectionRefusedError()) == "renderer_unreachable"
+    assert classify_error(urllib.error.URLError("no route")) == "renderer_unreachable"
+    assert classify_error(ValueError("x")) == "unknown"
+    assert classify_prepare_error(FileNotFoundError()) == "source_file_access"
+    assert classify_prepare_error(PermissionError()) == "source_file_access"
+    assert classify_prepare_error(OSError("disk")) == "file_io"
+    assert classify_prepare_error(audio.AudioProcessError("cache_io", "disk")) == "cache_io"
+    assert classify_prepare_error(ValueError("x")) == "processing_error"
+
+
+def test_prepare_error_has_category(rig, tone_factory, tmp_path):
+    bad = tmp_path / "bad.flac"
+    bad.write_bytes(b"this is not a flac file" * 10)
+    mock, server, player = rig(Profile(filters=[Filter("peq", 2000, -1.0, 1.0)]))
+    res = player.play_queue([bad])
+    assert res[0]["end_reason"] == "prepare_error" and res[0]["error_category"] == "source_format"
+
+
+def test_unreachable_renderer_has_category(rig, tone_factory):
+    src = tone_factory("uc", seconds=0.8)
+    mock, server, player = rig()
+    mock.stop()
+    res = player.play_queue([src])
+    assert res[0]["end_reason"] == "error"
+    assert res[0]["error_category"] in ("renderer_unreachable", "renderer_timeout")
+
+
+def test_never_started_category_follows_media_server_requests(rig, tone_factory):
+    src = tone_factory("ns", seconds=0.8)
+    mock, server, player = rig(mock_kw={"stall": True}, start_timeout_s=0.4)
+    res = player.play_queue([src])
+    assert res[0]["end_reason"] == "never_started"
+    expected = "renderer_fetched_no_play" if res[0]["requests"] else "renderer_never_fetched"
+    assert res[0]["error_category"] == expected
+
+
+def test_ok_track_has_no_error_category(rig, tone_factory):
+    src = tone_factory("ok", seconds=0.8)
+    mock, server, player = rig()
+    res = player.play_queue([src])
+    assert res[0]["end_reason"] == "ended" and "error_category" not in res[0]
+
+
+# ---- Wiederholung bei voruebergehenden Fehlern (Phase B2) -------------------------------------------
+
+
+class _Flaky:
+    """Renderer-Attrappe: set_uri/play/stop scheitern n-mal mit dem angegebenen Fehler, dann gelingt der Aufruf."""
+
+    def __init__(self, fails, exc):
+        self.fails, self.exc, self.calls = fails, exc, 0
+
+    def _go(self):
+        self.calls += 1
+        if self.calls <= self.fails:
+            raise self.exc
+        return "ok"
+
+    set_uri = play = stop = lambda self, *a: self._go()
+
+
+def _retry_player(fails, exc, **kw):
+    ev = []
+    r = _Flaky(fails, exc)
+    p = Player(r, None, poll_s=0.001, retry_backoff_s=0.001, on_event=lambda rec: ev.append(rec), **kw)
+    return p, r, ev
+
+
+def test_retry_recovers_after_transient_timeout():
+    import socket
+
+    p, r, ev = _retry_player(2, socket.timeout("t"))
+    assert p._call("play", r.play) == "ok" and r.calls == 3
+    assert [e["event"] for e in ev] == ["renderer_retry", "renderer_retry", "renderer_recovered"]
+    assert ev[0]["category"] == "renderer_timeout" and ev[0]["attempt"] == 1
+
+
+def test_retry_is_limited_and_reraises_last_error():
+    p, r, ev = _retry_player(99, ConnectionRefusedError())
+    with pytest.raises(ConnectionRefusedError):
+        p._call("play", r.play)
+    assert r.calls == 3 and sum(e["event"] == "renderer_retry" for e in ev) == 2
+
+
+def test_soap_fault_is_not_retried():
+    p, r, ev = _retry_player(99, upnp.UpnpError(701, "x"))
+    with pytest.raises(upnp.UpnpError):
+        p._call("play", r.play)
+    assert r.calls == 1 and not ev
+
+
+def test_no_retry_while_stop_requested():
+    p, r, ev = _retry_player(99, ConnectionRefusedError())
+    p._stop.set()
+    with pytest.raises(ConnectionRefusedError):
+        p._call("set_uri", r.set_uri)
+    assert r.calls == 1 and not ev
+
+
+def test_stop_interrupts_retry_backoff():
+    entered_backoff = threading.Event()
+    ev = []
+    r = _Flaky(99, ConnectionRefusedError())
+    p = Player(
+        r,
+        None,
+        retry_backoff_s=30.0,
+        on_event=lambda rec: (ev.append(rec), entered_backoff.set()),
+    )
+    outcome = []
+
+    def call():
+        try:
+            p._call("play", r.play)
+        except Exception as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=call, daemon=True)
+    worker.start()
+    assert entered_backoff.wait(2.0)
+    p.stop()
+    worker.join(1.0)
+
+    assert not worker.is_alive()
+    assert r.calls == 1
+    assert len(outcome) == 1 and isinstance(outcome[0], ConnectionRefusedError)
+    assert [e["event"] for e in ev] == ["renderer_retry"]
+
+
+def test_stop_uses_at_most_two_attempts_and_reports_stop_failed():
+    p, r, ev = _retry_player(99, ConnectionRefusedError())
+    p.renderer = r
+    p._safe_stop()
+    assert r.calls == 2 and ev[-1]["event"] == "stop_failed"
+
+
+def test_retry_attempts_one_disables_retry():
+    p, r, ev = _retry_player(99, ConnectionRefusedError(), retry_attempts=1)
+    with pytest.raises(ConnectionRefusedError):
+        p._call("play", r.play)
+    assert r.calls == 1
+
+
+def test_retries_show_up_in_status_findings():
+    from kefplayer import api
+
+    c = api.StatusCollector()
+    c.on_event({"ts": "t", "event": "renderer_retry", "action": "play", "attempt": 1, "category": "renderer_timeout", "error": "x"})
+    c.on_event({"ts": "t", "event": "renderer_recovered", "action": "play", "attempts": 2})
+    app = api.StatusApp(c)
+    snap = c.snapshot()
+    f = [x for x in app.findings(snap, app._live(False)) if x["code"] == "renderer_retries"]
+    assert f and f[0]["evidence"] == {"retries": 1, "recovered": 1}

@@ -275,8 +275,14 @@ def test_live_pause_is_visible_only_via_live(rig, tone_factory):
         assert st["data"]["phase"] == "track_active" and st["data"]["track"]["transport_state"] is None
         assert "track.paused" in st["unknown"] and "Pause" in st["unknown"]["track.paused"]  # ohne Live: ehrlich unbekannt
         c.set_live(api.LiveProbe(player.renderer.info, interval_s=0.5, timeout_s=1.0))
-        st = json.loads(api.respond(c, "/api/v1/status")[1])
-        assert st["data"]["track"]["transport_state"] == "PAUSED_PLAYBACK" and st["data"]["track"]["paused"] is True
+
+        def live_pause_visible():
+            current = json.loads(api.respond(c, "/api/v1/status")[1])
+            track = current["data"]["track"]
+            return current if track["transport_state"] == "PAUSED_PLAYBACK" else None
+
+        st = wait_for(live_pause_visible, timeout=5)
+        assert st and st["data"]["track"]["paused"] is True
     finally:
         player.stop()
         t.join(20)

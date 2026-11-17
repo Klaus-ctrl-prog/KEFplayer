@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import socket
 import time
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,6 +22,11 @@ ST_RENDERER = "urn:schemas-upnp-org:device:MediaRenderer:1"
 SVC_AVT = "urn:schemas-upnp-org:service:AVTransport:1"
 SVC_CM = "urn:schemas-upnp-org:service:ConnectionManager:1"
 UA = "kefplayer/0.1 UPnP/1.0"
+
+# Eine Sperre fuer alle Renderer-Instanzen (Player, HealthMonitor und API-Liveprobe).
+# RLock erlaubt dem Player, zusammengehoerige Aktionssequenzen zu schuetzen, waehrend
+# Renderer.soap dieselbe Sperre fuer einzelne SOAP-Aufrufe und fremde Renderer-Instanzen nutzt.
+RENDERER_LOCK = threading.RLock()
 DLNA_FLAGS = "01700000000000000000000000000000"
 DLNA_FEATURES = f"DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS={DLNA_FLAGS}"
 
@@ -328,11 +334,13 @@ class Renderer:
                 "User-Agent": UA,
             },
         )
-        try:
-            with _OPENER.open(req, timeout=self.timeout) as resp:
-                data = resp.read()
-        except urllib.error.HTTPError as e:
-            raise parse_fault(e.read(), e.code) from None
+        # Auch getrennte Renderer-Objekte duerfen keine parallelen SOAP-Aufrufe senden.
+        with RENDERER_LOCK:
+            try:
+                with _OPENER.open(req, timeout=self.timeout) as resp:
+                    data = resp.read()
+            except urllib.error.HTTPError as e:
+                raise parse_fault(e.read(), e.code) from None
         return parse_response(data)
 
     # AVTransport

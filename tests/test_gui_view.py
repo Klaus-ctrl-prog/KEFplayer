@@ -137,6 +137,9 @@ def test_full_flow_search_connect_queue_play(gui, tone_factory):
                       win.tree.item("1", "values")[3] == "gespielt" and win.tree.item("0", "values")[3] == "gespielt")
     assert any(s.startswith("Titel 1 von 2: a.flac | Wandzeit seit Titelstart") for s in seen_now)
     assert pump_until(root, win, lambda: win.state_var.get() == "Bereit")
+    # playback_done wird ueber die GUI-Nachrichtenqueue zugestellt; nicht
+    # voraussetzen, dass die Abschlussmeldung im selben Tk-Pump-Zyklus erscheint.
+    assert pump_until(root, win, lambda: "Fertig: 2 Titel, 0 mit Problemen" in win.log_contents(), timeout=5.0)
     assert "Fertig: 2 Titel, 0 mit Problemen" in win.log_contents()
     assert "> 001 a.flac" in win.log_contents() and "Ende: gespielt" in win.log_contents()
     assert [d["data"] for d in mock.fetched] == [Path(f).read_bytes() for f in dlg.files]
@@ -253,7 +256,10 @@ def test_close_during_playback_asks_then_shuts_down(gui, tone_factory):
 def test_layout_keeps_all_sections_visible_at_100_and_200_percent(gui, scaling):
     """Regression (ASUS, 200 %): Warteschlange und Protokoll verschwanden bei fester Pixelgroesse."""
     import tkinter as tk_
-    root_probe = tk_.Tk()
+    try:
+        root_probe = tk_.Tk()
+    except tk_.TclError as exc:
+        pytest.skip(f"Tcl/Tk runtime unavailable: {exc}")
     root_probe.withdraw()
     root_probe.tk.call("tk", "scaling", scaling)
     root_probe.destroy()

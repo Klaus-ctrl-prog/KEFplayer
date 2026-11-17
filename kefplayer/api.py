@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 
 from . import __version__
+from .diagnosis import diagnose
 
 API_VERSION = 1
 DEFAULT_PORT = 8766            # 8765 ist der Standardport des Medienservers
@@ -51,10 +52,27 @@ REJECT_DRAIN_MAX = 65536    # so viele Bytes werden dabei hoechstens gelesen und
 MAX_REJECT_THREADS = 8      # gleichzeitig wartende Abweisungen; darueber wird sofort hart geschlossen
 MIN_LIVE_INTERVAL_S = 0.5
 READ_ONLY_ACTIONS = ("GetTransportInfo", "GetPositionInfo")
-ENDPOINTS = ("status", "renderer", "dsp", "audio", "logs", "diagnostics")
+ENDPOINTS = ("status", "renderer", "dsp", "audio", "logs", "diagnostics", "health")
 
 _OK_END = {"ended", "skipped", "stopped"}
+
+# Kategorien (Phase C): in welchem Teil des Systems liegt der Befund bzw. das Ereignis?
+CATEGORIES = ("renderer", "upnp", "media_server", "audio", "dsp", "cache", "process", "diagnostics")
+_EVENT_CATEGORY = {
+    "queue_start": "process", "queue_end": "process", "sink": "upnp", "sink_unavailable": "upnp",
+    "track_processed": "dsp", "track_start": "audio", "stop_failed": "renderer", "cleanup_failed": "cache",
+    "renderer_retry": "renderer", "renderer_recovered": "renderer",
+}
+# Einordnung der error_category (player.classify_error u. a.) in Systemteile
+_ERROR_CATEGORY = {
+    "renderer_timeout": "renderer", "renderer_unreachable": "renderer", "renderer_fetched_no_play": "renderer",
+    "playback_timeout": "renderer", "renderer_soap_fault": "upnp", "renderer_http_error": "upnp",
+    "renderer_bad_response": "upnp", "renderer_never_fetched": "media_server", "source_file_access": "audio",
+    "source_format": "audio", "processing_error": "dsp", "cache_io": "cache", "file_io": "audio",
+}
 _LEVELS = {"info": 0, "warn": 1, "error": 2}
+_COMPONENT_CATEGORY = {"renderer_http": "renderer", "renderer_upnp": "upnp", "media_server": "media_server", "cache": "cache"}
+_HEALTH_PUBLIC_EVIDENCE = ("transport_state", "port", "free_mb")  # host/dir nur im Detailmodus
 
 
 # ---- kleine Helfer -----------------------------------------------------------------------------
@@ -169,8 +187,8 @@ class LiveProbe:
 
     * Nur auf Anfrage (kein Hintergrund-Polling): Ohne API-Aufruf entsteht kein Netzverkehr.
     * Hoechstens eine Abfrage-Runde je ``interval_s`` (mind. 0.5 s), egal wie viele Clients fragen.
-    * Eigene Renderer-Instanz mit eigenem, kurzem Timeout: das Verhalten des Players bleibt unberuehrt.
-    * Laeuft im aufrufenden HTTP-Thread, nie im Player-Thread.
+    * Eigene Renderer-Instanz mit eigenem Timeout; fragt nur bei freier gemeinsamer Renderer-Sperre ab.
+    * Laeuft im aufrufenden HTTP-Thread, nie im Player-Thread; blockiert die Wiedergabe nicht.
     Beobachtereffekt: Jede Abfrage ist zusaetzlicher Verkehr zur KEF (der Player fragt selbst 2x je poll_s)."""
 
     def __init__(self, renderer_info, interval_s: float = 1.0, timeout_s: float = 2.0, clock=time.monotonic):
@@ -218,9 +236,14 @@ class LiveProbe:
         if refresh and (last is None or now - last["mono"] >= self.interval_s):
             if self._busy.acquire(blocking=False):  # nur ein Abfrager gleichzeitig; die anderen nehmen den Cache
                 try:
-                    res = self._query()
-                    with self._lock:
-                        self._last = last = res
+                    # Nur abfragen, wenn der Renderer gerade frei ist: Live darf den Player nicht aufhalten.
+                    if self._upnp.RENDERER_LOCK.acquire(blocking=False):
+                        try:
+                            res = self._query()
+                            with self._lock:
+                                self._last = last = res
+                        finally:
+                            self._upnp.RENDERER_LOCK.release()
                 finally:
                     self._busy.release()
         return dict(last) if last else None
@@ -249,6 +272,7 @@ class StatusCollector:
         self._dropped = 0
         self._cfg: dict = {}
         self._live: LiveProbe | None = None
+        self._health = None
         self._phase = "no_queue"
         self._queue: dict | None = None
         self._queue_end: dict | None = None
@@ -257,7 +281,8 @@ class StatusCollector:
         self._results: collections.OrderedDict = collections.OrderedDict()
         self._proc: dict[int, dict] = {}
         self._sink: dict = {"state": "not_read"}
-        self._counters = collections.Counter()
+        self._counters = collections.Counter()  # Prozessweite Summen, bestehendes API-Verhalten
+        self._queue_counters = collections.Counter()  # Fehlerzaehler der aktuellen Wiedergabesitzung
         self._last_hook_error: str | None = None
         self._source_cache: dict[str, dict] = {}
         self._source_lock = threading.Lock()
@@ -272,6 +297,13 @@ class StatusCollector:
     @property
     def live(self) -> LiveProbe | None:
         return self._live
+
+    def set_health(self, monitor) -> None:
+        self._health = monitor
+
+    @property
+    def health(self):
+        return self._health
 
     def attach(self, *, player=None, renderer=None, server=None, profile=None) -> None:
         cfg: dict = {}
@@ -351,13 +383,20 @@ class StatusCollector:
             e.update(index=g("index"), name=_basename(g("path")), _path=g("path"), end_reason=g("end_reason"),
                      startup_delay_s=g("startup_delay_s"), wall_s=g("wall_s"), last_position_s=g("last_position_s"),
                      ended_early=g("ended_early"), gap_before_s=g("gap_before_s"), error=g("error"),
-                     n_requests=len(g("requests") or []))
+                     error_category=g("error_category"), n_requests=len(g("requests") or []))
         elif ev in ("stop_failed", "cleanup_failed"):
             e.update(error=g("error"), name=_basename(g("path")), _path=g("path"))
+        elif ev == "health_change":
+            bad = g("status") in ("warn", "error")
+            e.update(component=g("component"), status=g("status"), previous=g("previous"), error_category=g("category"),
+                     error=g("message") if bad else None)
+        elif ev in ("renderer_retry", "renderer_recovered"):
+            e.update(action=g("action"), attempt=g("attempt"), error_category=g("category"), error=g("error"))
         elif ev == "queue_end":
             e.update(played=g("played"), reasons=list(g("reasons") or []))
         else:  # unbekanntes Ereignis: nur die Feldnamen, nie die Werte (koennten Privates enthalten)
             e.update(fields=sorted(k for k in rec if k not in ("ts", "event"))[:30])
+        e["category"] = _category_of(e)
         return e
 
     def _update_state(self, ev: str, rec: dict, now: float) -> None:
@@ -367,6 +406,8 @@ class StatusCollector:
             self._queue = {"started_at": g("ts"), "mono": now, "n_tracks": len(g("tracks") or []),
                            "profile": g("profile") if isinstance(g("profile"), dict) else None,
                            "profile_neutral": g("profile_neutral"), "poll_s": g("poll_s")}
+            self._queue_counters = collections.Counter()
+            self._sink = {"state": "not_read"}
             self._queue_end = None
             self._cur = None
             self._results = collections.OrderedDict()
@@ -379,6 +420,8 @@ class StatusCollector:
         elif ev == "sink_unavailable":
             self._sink = {"state": "unavailable", "at": g("ts"), "error": str(g("error"))[:1000]}
             self._counters["sink_unavailable"] += 1
+            if self._queue is not None:
+                self._queue_counters["sink_unavailable"] += 1
         elif ev == "track_processed":
             idx = g("index")
             if not _is_index(idx):
@@ -418,6 +461,7 @@ class StatusCollector:
                 "startup_delay_s": g("startup_delay_s"), "wall_s": g("wall_s"), "last_position_s": g("last_position_s"),
                 "ended_early": g("ended_early"), "gap_before_s": g("gap_before_s"),
                 "error": str(g("error"))[:1000] if g("error") else None,
+                "error_category": g("error_category"),
                 "requests": {"count": len(reqs), "methods": dict(methods), "statuses": dict(statuses),
                              "bytes_sent": int(sum(sent)) if sent else None,
                              "range_requests": sum(1 for r in reqs if r.get("range"))},
@@ -434,8 +478,20 @@ class StatusCollector:
             self._phase = "queue_ended"
         elif ev == "stop_failed":
             self._counters["stop_failed"] += 1
+            if self._queue is not None:
+                self._queue_counters["stop_failed"] += 1
         elif ev == "cleanup_failed":
             self._counters["cleanup_failed"] += 1
+            if self._queue is not None:
+                self._queue_counters["cleanup_failed"] += 1
+        elif ev == "renderer_retry":
+            self._counters["renderer_retry"] += 1
+            if self._queue is not None:
+                self._queue_counters["renderer_retry"] += 1
+        elif ev == "renderer_recovered":
+            self._counters["renderer_recovered"] += 1
+            if self._queue is not None:
+                self._queue_counters["renderer_recovered"] += 1
 
     def count_request(self, key: str) -> None:
         with self._lock:
@@ -467,6 +523,7 @@ class StatusCollector:
                 "sink": dict(self._sink),
                 "cfg": dict(self._cfg),
                 "counters": dict(self._counters),
+                "queue_counters": dict(self._queue_counters),
                 "hook_error": self._last_hook_error,
                 "api_errors": self.api_errors,
                 "api_last_error": self.api_last_error,
@@ -496,6 +553,18 @@ class StatusCollector:
 # ---- Darstellung der Endpunkte ----------------------------------------------------------------------------
 
 
+def _category_of(e: dict) -> str:
+    ev = e.get("event")
+    if ev == "track_end":
+        ec = e.get("error_category")
+        if ec:
+            return _ERROR_CATEGORY.get(ec, "process")
+        return "audio" if e.get("end_reason") in _OK_END else "renderer"
+    if ev == "health_change":
+        return _COMPONENT_CATEGORY.get(e.get("component"), "process")
+    return _EVENT_CATEGORY.get(ev, "process")
+
+
 def _level_of(e: dict) -> str:
     ev = e.get("event")
     if ev == "track_end":
@@ -505,7 +574,9 @@ def _level_of(e: dict) -> str:
         return "warn" if e.get("ended_early") else "info"
     if ev == "track_start":
         return "warn" if e.get("mime_in_sink") is False else "info"
-    if ev in ("sink_unavailable", "stop_failed", "cleanup_failed"):
+    if ev == "health_change":
+        return {"error": "error", "warn": "warn"}.get(e.get("status"), "info")
+    if ev in ("sink_unavailable", "stop_failed", "cleanup_failed", "renderer_retry"):
         return "warn"
     return "info"
 
@@ -531,6 +602,7 @@ class StatusApp:
         if d.get("warnings"):
             d["warnings"] = [scrub(w, self.details, 300) for w in d["warnings"]]
         d["level"] = _level_of(e)
+        d["category"] = e.get("category") or _category_of(e)
         return d
 
     def _track_summary(self, r: dict, snap: dict, proc: bool = True) -> dict:
@@ -541,7 +613,8 @@ class StatusApp:
             "end_reason": r.get("end_reason"), "startup_delay_s": r.get("startup_delay_s"),
             "gap_before_s": r.get("gap_before_s"), "wall_s": r.get("wall_s"),
             "last_position_s": r.get("last_position_s"), "ended_early": r.get("ended_early"),
-            "error": scrub(r["error"], self.details) if r.get("error") else None, "requests": r.get("requests"),
+            "error": scrub(r["error"], self.details) if r.get("error") else None,
+            "error_category": r.get("error_category"), "requests": r.get("requests"),
         }
         if self.details:
             out["path"] = r.get("path")
@@ -818,15 +891,42 @@ class StatusApp:
             u.merge(um, "recent")
         return data, u.map
 
+    # -- health --
+    def health_status(self, snap: dict) -> tuple[dict, dict]:
+        u = _Unknown()
+        mon = self.c.health
+        if mon is None:
+            u.add("monitor", "Gesundheitsueberwachung nicht aktiv (Standard bei 'play'; --no-health schaltet sie ab)")
+            return {"enabled": False, "reason": "Gesundheitsueberwachung nicht aktiv."}, u.map
+        h = mon.snapshot()
+        comps = {}
+        for name, r in h["components"].items():
+            ev = {k: v for k, v in (r.get("evidence") or {}).items() if self.details or k in _HEALTH_PUBLIC_EVIDENCE}
+            comps[name] = {"status": r["status"], "category": _COMPONENT_CATEGORY.get(name, "process"),
+                           "error_category": r.get("category"), "message": scrub(r["message"], self.details),
+                           "latency_ms": r.get("latency_ms"), "last_checked_at": r.get("ts"), "since": r.get("since"),
+                           "evidence": ev}
+        data = {"enabled": True, "overall": h["overall"], "monitor": {k: h[k] for k in (
+            "state", "interval_s", "ticks", "errors", "last_tick_at", "last_tick_age_s", "renderer_checks_paused")},
+            "components": comps,
+            "notes": ["Nur lesende Abfragen (HTTP-GET der Geraetebeschreibung, GetTransportInfo).",
+                      "Waehrend ein Titel spielt, werden keine Renderer-Abfragen gesendet (renderer_checks_paused).",
+                      "Eine blockierende Windows-Firewall ist von hier aus nicht erkennbar."]}
+        if h["last_error"]:
+            data["monitor"]["last_error"] = scrub(h["last_error"], self.details)
+        return data, u.map
+
     # -- logs --
-    def logs(self, snap: dict, limit: int, since: int, level: str) -> tuple[dict, dict]:
+    def logs(self, snap: dict, limit: int, since: int, level: str, category: str | None = None) -> tuple[dict, dict]:
         u = _Unknown()
         floor = _LEVELS[level]
-        sel = [e for e in snap["events"] if e["seq"] > since and _LEVELS[_level_of(e)] >= floor]
+        sel = [e for e in snap["events"] if e["seq"] > since and _LEVELS[_level_of(e)] >= floor
+               and (category is None or e.get("category") == category)]
         sel = sel[-limit:]
         evs = snap["events"]
         data = {
             "events": [self._ev(e) for e in sel], "returned": len(sel), "limit": limit, "since": since, "level": level,
+            "category": category,
             "newest_seq": snap["seq"], "oldest_seq_in_buffer": evs[0]["seq"] if evs else None,
             "buffer_size": EVENT_BUFFER, "dropped_total": snap["dropped"],
             "scope": "nur Ereignisse dieses Prozesses seit Start; keine Zeilen aus alten Protokolldateien",
@@ -852,46 +952,79 @@ class StatusApp:
     def findings(self, snap: dict, live: dict) -> list[dict]:
         out: list[dict] = []
 
-        def add(level, code, msg, **ev):
-            out.append({"level": level, "code": code, "message": msg, "evidence": ev})
+        def add(level, code, msg, category, ts=None, **ev):
+            # ts: Zeitpunkt des zugrunde liegenden Ereignisses, wenn bekannt; sonst Zeitpunkt der Auswertung
+            queue_scoped = {"track_problem", "ended_early", "mime_not_in_sink", "sink_unavailable",
+                            "stop_failed", "cleanup_failed", "renderer_retries", "clipping_guard"}
+            scope = "queue" if code in queue_scoped and snap.get("queue") is not None else "process"
+            if scope == "queue":
+                ev.setdefault("queue_started_at", snap["queue"].get("started_at"))
+            out.append({"level": level, "code": code, "category": category, "scope": scope, "message": msg,
+                        "ts": ts or snap["now_iso"], "ts_source": "event" if ts else "evaluation", "evidence": ev})
 
         for r in snap["results"]:
             name = _basename(r.get("path"))
             if r.get("end_reason") not in _OK_END:
                 add("error", "track_problem", f"Titel {r['index'] + 1} endete mit '{r.get('end_reason')}'.",
-                    index=r["index"], name=name, end_reason=r.get("end_reason"),
+                    _ERROR_CATEGORY.get(r.get("error_category"), "renderer"), r.get("ended_at"), index=r["index"], name=name, end_reason=r.get("end_reason"), error_category=r.get("error_category"),
                     error=scrub(r["error"], self.details) if r.get("error") else None)
             elif r.get("ended_early"):
                 add("warn", "ended_early", f"Titel {r['index'] + 1} endete frueher als die Dauer.",
-                    index=r["index"], name=name, last_position_s=r.get("last_position_s"))
+                    "renderer", r.get("ended_at"), index=r["index"], name=name, last_position_s=r.get("last_position_s"))
             if r.get("mime_in_sink") is False:
                 add("warn", "mime_not_in_sink", f"MIME-Typ {r.get('mime')} steht nicht in den Sink-Formaten des Renderers.",
-                    index=r["index"], name=name, mime=r.get("mime"))
+                    "upnp", r.get("ended_at"), index=r["index"], name=name, mime=r.get("mime"))
         if snap["sink"]["state"] == "unavailable":
-            add("warn", "sink_unavailable", "Sink-Formate des Renderers waren nicht lesbar.",
+            add("warn", "sink_unavailable", "Sink-Formate des Renderers waren nicht lesbar.", "upnp", snap["sink"].get("at"),
                 error=scrub(snap["sink"].get("error", ""), self.details))
-        for key, code, txt in (("stop_failed", "stop_failed", "Stop am Renderer schlug fehl"),
-                               ("cleanup_failed", "cleanup_failed", "Temporaere Datei konnte nicht geloescht werden")):
-            n = snap["counters"].get(key, 0)
+        # Vor queue_start eingehende Ereignisse behalten die historische Prozess-Sicht;
+        # sobald eine Queue existiert, werden nur noch deren Zaehler diagnostiziert.
+        counters = snap.get("queue_counters", {}) if snap.get("queue") is not None else snap["counters"]
+        for key, code, txt, cat in (("stop_failed", "stop_failed", "Stop am Renderer schlug fehl", "renderer"),
+                                    ("cleanup_failed", "cleanup_failed", "Temporaere Datei konnte nicht geloescht werden", "cache")):
+            n = counters.get(key, 0)
             if n:
-                add("warn", code, f"{txt} ({n}x).", count=n)
+                add("warn", code, f"{txt} ({n}x).", cat, count=n)
+        n_retry = counters.get("renderer_retry", 0)
+        if n_retry:
+            recovered = counters.get("renderer_recovered", 0)
+            add("warn", "renderer_retries", f"Renderer-Aufrufe wurden {n_retry}x wiederholt "
+                f"({recovered}x danach erfolgreich).", "renderer",
+                retries=n_retry, recovered=recovered)
+        h = self.c.health.snapshot() if self.c.health is not None else None
+        if h is not None:
+            for comp, r in h["components"].items():
+                if r["status"] in ("warn", "error"):
+                    add(r["status"], f"health_{comp}", scrub(r["message"], self.details), _COMPONENT_CATEGORY.get(comp, "process"),
+                        r.get("since"), error_category=r.get("category"), latency_ms=r.get("latency_ms"))
+            if h["state"] == "stalled":
+                add("warn", "health_monitor_stalled", "Die Gesundheitsueberwachung liefert keine aktuellen Werte.",
+                    "diagnostics", last_tick_age_s=h["last_tick_age_s"], errors=h["errors"],
+                    last_error=scrub(h["last_error"] or "", self.details))
+            if h["errors"]:
+                add("warn", "health_monitor_errors",
+                    f"Die Gesundheitsueberwachung hat {h['errors']} interne Fehler registriert.",
+                    "diagnostics", count=h["errors"],
+                    last_error=scrub(h["last_error"] or "", self.details),
+                    monitor_state=h["state"])
         guard = [i for i, p in snap["proc"].items() if p.get("guard_gain_db")]
         if guard:
-            add("info", "clipping_guard", f"Clipping-Schutz war bei {len(guard)} Titel(n) aktiv.", count=len(guard))
+            add("info", "clipping_guard", f"Clipping-Schutz war bei {len(guard)} Titel(n) aktiv.", "dsp", count=len(guard))
         if snap["dropped"]:
             add("info", "event_buffer_overflow",
-                f"{snap['dropped']} aeltere Ereignisse wurden aus dem Puffer ({EVENT_BUFFER}) verdraengt.", dropped=snap["dropped"])
+                f"{snap['dropped']} aeltere Ereignisse wurden aus dem Puffer ({EVENT_BUFFER}) verdraengt.", "diagnostics", dropped=snap["dropped"])
         if snap["counters"].get("malformed_events"):
             add("warn", "malformed_events", "Ereignisse ohne gueltigen Titelindex wurden im Zustand nicht beruecksichtigt "
-                "(sie stehen weiter unter /logs).", count=snap["counters"]["malformed_events"])
+                "(sie stehen weiter unter /logs).", "diagnostics", count=snap["counters"]["malformed_events"])
         if snap["counters"].get("hook_errors"):
-            add("warn", "collector_error", "Der Sammler konnte Ereignisse nicht verarbeiten.",
+            add("warn", "collector_error", "Der Sammler konnte Ereignisse nicht verarbeiten.", "diagnostics",
                 count=snap["counters"]["hook_errors"], last=scrub(snap["hook_error"] or "", self.details))
         if snap["api_errors"]:
-            add("warn", "api_error", "Interne Fehler beim Beantworten von API-Anfragen.",
+            add("warn", "api_error", "Interne Fehler beim Beantworten von API-Anfragen.", "diagnostics",
                 count=snap["api_errors"], last=scrub(snap["api_last_error"] or "", self.details))
         if live["enabled"] and live.get("ok") is False:
-            add("warn", "live_probe_failed", "Die letzte Live-Abfrage des Renderers schlug fehl.", error=live.get("error"))
+            add("warn", "live_probe_failed", "Die letzte Live-Abfrage des Renderers schlug fehl.", "renderer",
+                error=scrub(live.get("error") or "", self.details))
         return out
 
     def diagnostics(self, snap: dict, live: dict, n_events: int = 100, final: bool = False) -> tuple[dict, dict]:
@@ -905,6 +1038,7 @@ class StatusApp:
         rs = snap["results"]
         reasons = collections.Counter(str(r.get("end_reason")) for r in rs)
         findings = self.findings(snap, live)
+        diagnoses = diagnose(findings, mode="shadow")
         counts = collections.Counter(f["level"] for f in findings)
         tracks = [self._track_summary(r, snap) for r in rs[-MAX_TRACKS_IN_DIAG:]]
         evs = [self._ev(e) for e in snap["events"][-n_events:]] if n_events > 0 else []
@@ -915,10 +1049,14 @@ class StatusApp:
                 "tracks_finished": len(rs), "end_reasons": dict(reasons),
                 "processed_tracks": sum(1 for r in rs if r.get("processed")),
                 "findings": {"error": counts.get("error", 0), "warn": counts.get("warn", 0), "info": counts.get("info", 0)},
+                "findings_by_category": dict(collections.Counter(f["category"] for f in findings)),
+                "findings_by_scope": dict(collections.Counter(f["scope"] for f in findings)),
                 "profile": (ds.get("profile") or {}).get("name"),
                 "renderer_model": ((rn.get("identity") or {}).get("model_name")),
             },
             "findings": findings,
+            "diagnoses": diagnoses,
+            "health": self.health_status(snap)[0],
             "timing": self.timing(snap),
             "status": st, "renderer": rn, "dsp": ds, "audio": au,
             "tracks": tracks, "tracks_omitted": max(0, len(rs) - len(tracks)),
@@ -973,7 +1111,7 @@ class QueryError(ValueError):
 def _parse_query(endpoint: str, qs: str) -> dict:
     allowed = {"pretty"}
     if endpoint == "logs":
-        allowed |= {"limit", "since", "level"}
+        allowed |= {"limit", "since", "level", "category"}
     if endpoint == "diagnostics":
         allowed |= {"events"}
     try:
@@ -1008,7 +1146,11 @@ def _parse_query(endpoint: str, qs: str) -> dict:
         level = one("level", "info")
         if level not in _LEVELS:
             raise QueryError("level muss info, warn oder error sein")
-        q.update(limit=integer("limit", 50, 1, MAX_LOG_LIMIT), since=integer("since", 0, 0, 10**9), level=level)
+        category = one("category", None)
+        if category is not None and category not in CATEGORIES:
+            raise QueryError("category muss eine von " + ", ".join(CATEGORIES) + " sein")
+        q.update(limit=integer("limit", 50, 1, MAX_LOG_LIMIT), since=integer("since", 0, 0, 10**9), level=level,
+                 category=category)
     if endpoint == "diagnostics":
         q["events"] = integer("events", 100, 0, MAX_LOG_LIMIT)
     return q
@@ -1058,6 +1200,7 @@ INDEX_TEXT = {
     "audio": "Audio: Quellformat, Zielformat, Verarbeitungspfad",
     "logs": "Letzte Ereignisse und Fehler (limit, since, level)",
     "diagnostics": "Zusammenfassung fuer die technische Analyse (alle Bereiche, Befunde, Zeitstatistik)",
+    "health": "Gesundheit: Renderer (HTTP/UPnP), Medienserver, Cache; Zustand und Ueberwachung",
 }
 
 
@@ -1089,7 +1232,9 @@ def respond(collector: StatusCollector, path: str, query: str = "", final: bool 
     elif endpoint == "audio":
         data, unk = app.audio(snap)
     elif endpoint == "logs":
-        data, unk = app.logs(snap, q["limit"], q["since"], q["level"])
+        data, unk = app.logs(snap, q["limit"], q["since"], q["level"], q["category"])
+    elif endpoint == "health":
+        data, unk = app.health_status(snap)
     else:
         data, unk = app.diagnostics(snap, live, q["events"], final=final)
     return 200, _shrink(_envelope(endpoint, data, unk, snap, collector.details), pretty)

@@ -105,6 +105,30 @@ def test_report_contains_formats_and_warnings(tone_factory, tmp_path):
     json.dumps(rep)  # muss serialisierbar sein
 
 
+def test_process_file_classifies_source_read_oserror(monkeypatch, tmp_path):
+    def fail_read(_path):
+        raise OSError("source device unavailable")
+
+    monkeypatch.setattr(audio, "read_audio", fail_read)
+    with pytest.raises(audio.AudioProcessError) as err:
+        audio.process_file("source.flac", tmp_path / "cache", Profile(), classify_errors=True)
+    assert err.value.category == "source_file_access"
+    assert isinstance(err.value.__cause__, OSError)
+
+
+def test_process_file_classifies_cache_write_oserror(monkeypatch, tone_factory, tmp_path):
+    src = tone_factory("cache-write", seconds=0.2)
+
+    def fail_write(*_args, **_kwargs):
+        raise OSError("cache device full")
+
+    monkeypatch.setattr(audio, "_write", fail_write)
+    with pytest.raises(audio.AudioProcessError) as err:
+        audio.process_file(src, tmp_path / "cache", Profile(filters=[dsp.Filter("peq", 1000, -1.0, 1.0)]), classify_errors=True)
+    assert err.value.category == "cache_io"
+    assert isinstance(err.value.__cause__, OSError)
+
+
 def test_runlog_writes_jsonl(tmp_path):
     log = RunLog(tmp_path / "sub" / "run.jsonl")
     log.write("a", x=1)
