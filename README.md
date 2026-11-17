@@ -97,7 +97,14 @@ Das Ereignis `sink` enthält die vom Gerät gemeldeten Formate. `cleanup_failed`
 
 ## Tests und Prüfstand
 
-Die Testsuite umfasst 679 Tests: 51 zur Oberfläche (`tests/test_gui_*.py`: 25 Controller, 15 Anzeigelogik, 11 Fenster) und 628 bis 0.2.1 (119 zur Wiedergabe, 145 zur Status-API, 53 zu den L/R-Funktionen und zur APO-Delay-Grenze, 311 zu Rückwärtskompatibilität gegen 0.2.0, numerischer Stabilität, Randfällen, Simulator und Fehlerbehandlung von `process`; Stand der Veröffentlichung 0.2.0: 264). Sie läuft ausschließlich gegen den simulierten Renderer (`tests/mock_renderer.py`) und braucht weder eine KEF noch ein Heimnetz. **Alle Nachweise stammen aus Tests mit dem Simulator, nicht aus Tests mit echter KEF-Hardware.**
+**Aktueller Entwicklungsstand im PR #2 (Branch `phase-bc-diagnose-health`, Commit `9c0f2de`, 17.11.2026):** GitHub Actions hat die vollständige Testsuite mit 769 gesammelten Tests auf beiden Plattformen erfolgreich ausgeführt:
+
+- [Windows, Python 3.12 — Run 44059392714](https://github.com/Klaus-ctrl-prog/KEFplayer/actions/runs/44059392714): 756 bestanden, 13 übersprungen, 0 fehlgeschlagen. Davon 12 wegen fehlender zusätzlicher `np.longdouble)-Präzision unter Windows/MSVC und einer wegen nicht verfügbarem Tk-Display.
+- [Ubuntu — Run 44059392714](https://github.com/Klaus-ctrl-prog/KEFplayer/actions/runs/44059392714): 758 bestanden, 11 übersprungen, 0 fehlgeschlagen. Die übersprungenen GUI-Tests benötigen ein Display.
+- Beide CI-Jobs verwenden den Renderer-Simulator. Das ist kein Nachweis für das Verhalten einer realen KEF. Der PR bleibt offen und ungemergt.
+
+
+Historischer Stand 0.3.0: Die Testsuite umfasste 679 Tests: 51 zur Oberfläche (`tests/test_gui_*.py`: 25 Controller, 15 Anzeigelogik, 11 Fenster) und 628 bis 0.2.1 (119 zur Wiedergabe, 145 zur Status-API, 53 zu den L/R-Funktionen und zur APO-Delay-Grenze, 311 zu Rückwärtskompatibilität gegen 0.2.0, numerischer Stabilität, Randfällen, Simulator und Fehlerbehandlung von `process`; Stand der Veröffentlichung 0.2.0: 264). Sie läuft ausschließlich gegen den simulierten Renderer (`tests/mock_renderer.py`) und braucht weder eine KEF noch ein Heimnetz. **Alle Nachweise stammen aus Tests mit dem Simulator, nicht aus Tests mit echter KEF-Hardware.**
 
 **Windows** (vom Entwickler ausgeführt, getrennt von den Linux-Läufen):
 
