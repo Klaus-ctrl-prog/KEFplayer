@@ -10,6 +10,9 @@ from collections import defaultdict
 from typing import Any
 
 
+MAX_EVIDENCE_PER_DIAGNOSIS = 25
+
+
 def _hypothesis(cause: str, confidence: str, rationale: str) -> dict[str, str]:
     return {"cause": cause, "confidence": confidence, "rationale": rationale}
 
@@ -48,15 +51,17 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
     for code, items in sorted(grouped.items()):
         components = {category_components.get(item.get("category"), "process") for item in items}
         component = next(iter(components)) if len(components) == 1 else "playback"
-        evidence = []
+        all_evidence = []
         for item in items:
-            evidence.append({
+            all_evidence.append({
                 "code": code,
                 "level": item.get("level"),
                 "category": item.get("category"),
                 "ts": item.get("ts"),
                 "evidence": dict(item.get("evidence") or {}) if isinstance(item.get("evidence"), dict) else {},
             })
+        evidence = all_evidence[:MAX_EVIDENCE_PER_DIAGNOSIS]
+        evidence_omitted = len(all_evidence) - len(evidence)
 
         hypotheses: list[dict[str, str]] = []
         suppression_reason = "no_supported_rule"
@@ -92,7 +97,7 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
                 "The health monitor recorded internal errors; its last error is supporting evidence.",
             )]
         elif code == "renderer_retries":
-            retry_evidence = [x.get("evidence", {}) for x in evidence]
+            retry_evidence = [x.get("evidence", {}) for x in all_evidence]
             recovered = [x.get("recovered") for x in retry_evidence]
             if recovered and all(isinstance(n, int) and not isinstance(n, bool) and n > 0 for n in recovered):
                 hypotheses = [_hypothesis(
@@ -115,7 +120,7 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
                 "Sink-format information could not be read; playback and renderer reachability are separate signals.",
             )]
         elif code == "track_problem":
-            categories = {x.get("evidence", {}).get("error_category") for x in evidence}
+            categories = {x.get("evidence", {}).get("error_category") for x in all_evidence}
             if categories and categories <= {"source_file_access", "file_io"}:
                 hypotheses = [_hypothesis(
                     "source_file_unavailable_or_inaccessible", "medium",
@@ -166,6 +171,7 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
                 default="unknown",
             ),
             "evidence": evidence,
+            "evidence_omitted": evidence_omitted,
             "proposed_action": None,
             "decision": decision,
             "suppression_reason": suppression_reason,
