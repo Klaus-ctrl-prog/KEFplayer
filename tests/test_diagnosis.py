@@ -98,6 +98,20 @@ def test_renderer_retry_diagnosis_distinguishes_recovery_from_unrecovered_retrie
     assert all(item["proposed_action"] is None for item in (recovered, unrecovered, missing))
 
 
+def test_diagnosis_bounds_repeated_evidence_and_reports_omitted_count():
+    findings = [
+        finding("track_problem", "renderer", error_category="renderer_timeout", index=i)
+        for i in range(40)
+    ]
+
+    result = diagnose(findings)[0]
+
+    assert result["decision"] == "shadow_propose"
+    assert result["cause_hypotheses"][0]["cause"] == "renderer_or_delivery_path_playback_failure"
+    assert len(result["evidence"]) == 25
+    assert result["evidence_omitted"] == 15
+
+
 def test_track_problem_classifies_cache_io_without_proposing_a_repair():
     result = diagnose([
         finding("track_problem", "cache", error_category="cache_io")
