@@ -29,14 +29,20 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
     if not isinstance(findings, list):
         raise TypeError("findings must be a list")
 
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grouped: dict[tuple[str, str | None], list[dict[str, Any]]] = defaultdict(list)
     for finding in findings:
         if not isinstance(finding, dict):
             continue
         code = finding.get("code")
         if not isinstance(code, str) or not code:
             continue
-        grouped[code].append(finding)
+        track_category = None
+        if code == "track_problem":
+            item_evidence = finding.get("evidence")
+            raw_category = item_evidence.get("error_category") if isinstance(item_evidence, dict) else None
+            if isinstance(raw_category, str) and raw_category:
+                track_category = raw_category
+        grouped[(code, track_category)].append(finding)
 
     category_components = {
         "renderer": "renderer",
@@ -48,7 +54,9 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
         "diagnostics": "diagnostics",
     }
     records: list[dict[str, Any]] = []
-    for code, items in sorted(grouped.items()):
+    for (code, track_category), items in sorted(
+        grouped.items(), key=lambda pair: (pair[0][0], pair[0][1] or "")
+    ):
         components = {category_components.get(item.get("category"), "process") for item in items}
         component = next(iter(components)) if len(components) == 1 else "playback"
         all_evidence = []
@@ -163,7 +171,11 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
             suppression_reason = None
 
         records.append({
-            "diagnosis_id": f"{component}:{code}",
+            "diagnosis_id": (
+                f"{component}:{code}:{track_category}"
+                if code == "track_problem" and track_category is not None
+                else f"{component}:{code}"
+            ),
             "component": component,
             "symptom": code,
             "cause_hypotheses": hypotheses,
