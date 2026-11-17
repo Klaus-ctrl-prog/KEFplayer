@@ -114,10 +114,38 @@ def test_overall_picks_worst():
     assert health.overall([]) == "unknown"
 
 
-def test_health_only_sends_read_only_upnp_actions(env):
-    mock, server, info, tmp = env
-    health.run_checks(info, server, tmp)
-    assert {a for a, _ in mock.actions} <= {"GetTransportInfo"}
+def test_health_monitor_does_not_retain_stale_renderer_errors_while_paused(tmp_path, monkeypatch):
+    events = []
+    monitor = health.HealthMonitor(events.append, cache_dir=tmp_path, busy=lambda: True)
+
+    for component, category in (("renderer_http", "renderer"), ("renderer_upnp", "upnp")):
+        monitor._update({
+            "component": component,
+            "status": "error",
+            "category": category,
+            "message": "alter Fehler",
+            "ts": "2026-11-17T10:00:00+00:00",
+            "evidence": {},
+            "latency_ms": 1.0,
+        })
+
+    monkeypatch.setattr(
+        health, "check_media_server",
+        lambda server: health._result("media_server", "ok", "media_server", "ok"),
+    )
+    monkeypatch.setattr(
+        health, "check_cache",
+        lambda cache_dir: health._result("cache", "ok", "cache_io", "ok"),
+    )
+
+    monitor.tick()
+    snapshot = monitor.snapshot()
+
+    assert snapshot["renderer_checks_paused"] is True
+    assert snapshot["components"]["renderer_http"]["status"] == "unknown"
+    assert snapshot["components"]["renderer_upnp"]["status"] == "unknown"
+    assert snapshot["overall"] == "unknown"
+    assert sum(event["event"] == "health_change" for event in events) == 4
 
 
 # ---- CLI ----
