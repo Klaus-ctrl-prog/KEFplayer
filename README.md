@@ -226,8 +226,24 @@ Erst nach T01 sinnvoll zu entscheiden, weil das Fehlerbild der KEF unbekannt ist
 
 ## Entwicklung
 
-    pip install -e .[test]
-    python -m pytest tests -q
+### Vollständige Testsuite unter Windows (PowerShell)
+
+Die folgenden Befehle im Projektordner ausführen, in dem `pyproject.toml` liegt. Sie verwenden Python 3.12 und eine lokale virtuelle Umgebung. Die Aktivierung der Umgebung ist nicht erforderlich; dadurch muss auch kein PowerShell-Ausführungsrichtlinien-Skript gestartet werden.
+
+```powershell
+py -3.12 -m venv .venv
+$Python = ".\.venv\Scripts\python.exe"
+
+& $Python -m pip install --upgrade pip
+& $Python -m pip install ".[test]"
+& $Python -m pip check
+& $Python -m kefplayer --version
+& $Python -m pytest -q -p no:cacheprovider -rs
+```
+
+Der letzte Befehl führt die vollständige Testsuite aus. Die Tests verwenden den Renderer-Simulator; eine KEF und ein Heimnetz sind dafür nicht erforderlich. `-rs` zeigt die Gründe für übersprungene Tests an. Der Aufruf entspricht dem Testschritt der GitHub-Actions-CI; dort wird zusätzlich auf Ubuntu getestet.
+
+Bei Bedarf kann die virtuelle Umgebung später mit `Remove-Item -Recurse -Force .venv` entfernt werden. Die Befehle verändern keine globale Python-Installation.
 
 Aufbau: `kefplayer/dsp.py` (Filter, Profile), `audio.py` (Dateien), `upnp.py` (SSDP, SOAP, DIDL), `mediaserver.py` (HTTP mit Range), `player.py` (Warteschlange, Messung), `cli.py`, `runlog.py`, `api.py` (Status-API, nur lesend), `gui/` (Oberfläche: `controller.py` ohne Toolkit-Import, `viewmodel.py` Anzeigelogik, `view_main.py` tkinter-Fenster, `texts.py`, `__main__.py`). Tests der Oberfläche: `tests/test_gui_*.py`. Tests der API: `tests/test_api*.py`, gemeinsame Hilfen in `tests/api_helpers.py`.
 
