@@ -214,3 +214,16 @@ def test_retry_recovery_counts_are_not_combined_across_playback_queues():
     diagnosis = next(item for item in data["diagnoses"] if item["symptom"] == "renderer_retries")
     assert diagnosis["cause_hypotheses"][0]["cause"] == "renderer_command_retry_without_recorded_recovery"
 
+def test_sink_failure_from_previous_queue_is_not_reused_in_new_queue():
+    c = attached()
+    feed(c,
+         ev("queue_start", tracks=["a"], profile={"name": "p"}, profile_neutral=False, renderer="r", poll_s=0.5),
+         ev("sink_unavailable", error="old failure"))
+    first = body(c, "/api/v1/diagnostics")["data"]["findings"]
+    assert any(item["code"] == "sink_unavailable" for item in first)
+
+    feed(c, ev("queue_end", played=0, reasons=[]),
+         ev("queue_start", tracks=["b"], profile={"name": "p"}, profile_neutral=False, renderer="r", poll_s=0.5))
+    second = body(c, "/api/v1/diagnostics")["data"]["findings"]
+    assert not any(item["code"] == "sink_unavailable" for item in second)
+
