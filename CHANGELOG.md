@@ -12,7 +12,8 @@
 - **D0 Diagnose** (`kefplayer/diagnosis.py`): deterministische Gruppierung der Befunde mit vorsichtigen Ursachenhypothesen. Rein lesend.
 - **D1 Schattenentscheidungen** (`kefplayer/repair_decision.py`, `docs/repair-decisions.md`): bewertet D0-Hypothesen gegen Originalbefunde und Health-Zustand; Status nur `deferred` oder `suppressed`, nie `eligible`; keine Seiteneffekte. Ausgegeben unter `repair_decisions` im Diagnose-Endpunkt.
 - **D2 Opt-in-Reparatur** (`kefplayer/repair_exec.py`, `kefplayer/repair_budget.py`, `docs/repair-d2.md`): Standard **aus**. Nur mit `kefplayer play --enable-repair` (nicht zusammen mit `--no-health`) wird eine einzige Aktion ausgeführt: R5, Neustart eines hängenden Diagnose-Monitors. Nie während ein Titel spielt, nie `RENDERER_LOCK`, Versuchsbudget mit Pause und Flapping-Sperre, Prüfung nach dem Neustart, Ereignisse `repair_start`/`repair_result`/`repair_blocked` im Protokoll und Abschnitt `repair` in `/api/v1/health`.
-- Neue Tests für alle genannten Teile (u. a. D1-Invarianten, Regressionstests, Simulator); die Testsuite umfasst 837 Tests.
+- **Internetradio E1** (`kefplayer radio`, `kefplayer/radio.py`, `docs/radio.md`): Stream wird über den Medienserver unverändert durchgeleitet; nur AAC/Ogg/Opus/FLAC, **MP3 abgelehnt**; Favoritenliste; URLs in Meldungen maskiert; keine ICY-Metadaten; Live-DIDL (`audioBroadcast`, `DLNA.ORG_OP=00`); Wartezeit ohne Zeitgrenze. Kein Raum-EQ (E1b folgt), keine API/Health für Radio. Nur Simulator.
+- Neue Tests für alle genannten Teile (u. a. D1-Invarianten, Regressionstests, Simulator); die Testsuite umfasst nun mehr Tests (siehe CI).
 
 ### Behoben
 

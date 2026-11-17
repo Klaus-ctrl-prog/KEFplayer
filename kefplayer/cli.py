@@ -174,6 +174,11 @@ def _print_event(rec: dict) -> None:
         if rec.get("error"):
             extra.append(rec["error"])
         print(f"  Ende: {rec['end_reason']}" + (" (" + "; ".join(extra) + ")" if extra else ""))
+    elif ev == "stream_start":
+        print(f"> Radio: {rec['title']}  [{rec['mime']}, unveraendert durchgeleitet, Quelle {rec['source']}]")
+    elif ev == "stream_end":
+        extra = f" ({rec['error']})" if rec.get("error") else ""
+        print(f"  Ende: {rec['end_reason']}{extra}")
     elif ev == "health_change":
         bad = ("warn", "error")
         if rec["status"] in bad or rec.get("previous") in bad:  # nur Probleme und deren Behebung, kein "ok"-Rauschen
@@ -347,6 +352,54 @@ def cmd_play(args) -> int:
 # ---- Parser -----------------------------------------------------------------------
 
 
+def cmd_radio(args) -> int:
+    """Internetradio (E1): Stream ueber den Medienserver unveraendert an den Renderer leiten. Kein DSP, keine API."""
+    from . import radio
+
+    try:
+        name, url = radio.resolve_target(args.target, args.favorites)
+        info = radio.probe(url)
+    except radio.RadioError as e:
+        _err(f"Fehler ({e.category}): {e}")
+        return 2
+    renderer = resolve_renderer(args)
+    host_ip = args.host_ip or local_ip_for(renderer.info.host)
+    server = MediaServer(bind=args.bind, port=args.port, advertise_host=host_ip)
+    try:
+        server.start()
+    except OSError as e:
+        sys.exit(f"Medienserver konnte nicht starten ({e}). Anderen --port waehlen.")
+    print(f"Renderer: {renderer.info.friendly_name} ({renderer.info.host}); Medienserver {host_ip}:{server.port}")
+    print("Hinweis: die Lautstaerke des Renderers wird nicht veraendert. Radio: nur durchgeleitet (kein Raum-EQ).")
+    player = Player(renderer, server, load_profile(None), log=RunLog(args.log), on_event=_print_event,
+                    poll_s=args.poll, plain_protocolinfo=args.plain_protocolinfo)
+    if sys.stdin is not None and sys.stdin.isatty():
+        print("Eingabe + Enter: q = Ende")
+
+        def reader():
+            for line in sys.stdin:
+                if line.strip().lower() == "q":
+                    player.stop()
+                    return
+
+        threading.Thread(target=reader, daemon=True).start()
+    try:
+        res = player.play_stream(lambda: radio.open_stream(info.url), info.mime, info.ext, name, radio.mask_url(info.url))
+    except KeyboardInterrupt:
+        player.stop()
+        try:
+            renderer.stop()
+        except (upnp.UpnpError, OSError):
+            pass
+        print("\nAbgebrochen.")
+        return 130
+    finally:
+        server.stop()
+    ok = res.get("end_reason") in ("ended", "stopped")
+    print(f"Fertig: {res.get('end_reason')}. Protokoll: {args.log}")
+    return 0 if ok else 1
+
+
 def _renderer_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--renderer", help="URL der Geraetebeschreibung (http://...) oder IP; ohne Angabe wird gesucht")
     p.add_argument("--bind-ip", help="eigene IP der Netzwerkkarte fuer die Suche (mehrere Karten/VPN)")
@@ -399,6 +452,18 @@ def build_parser() -> argparse.ArgumentParser:
     pc.add_argument("--number", action="store_true", help="Dateinamen mit laufender Nummer versehen")
     _output_args(pc)
     pc.set_defaults(func=cmd_process)
+
+    rd = sub.add_parser("radio", help="Internetradio (E1): Stream unveraendert durchleiten (nur AAC/Ogg/Opus/FLAC, kein MP3, kein Raum-EQ)")
+    rd.add_argument("target", help="Stream-URL (http/https) oder Name aus --favorites")
+    rd.add_argument("--favorites", help="Favoritenliste (JSON: [{\"name\": ..., \"url\": ...}])")
+    _renderer_args(rd)
+    rd.add_argument("--port", type=int, default=8765, help="Port des Medienservers (Standard 8765; 0 = beliebig)")
+    rd.add_argument("--bind", default="0.0.0.0", help="Schnittstelle des Medienservers")
+    rd.add_argument("--host-ip", help="IP, unter der der Renderer diesen PC erreicht (Standard: automatisch)")
+    rd.add_argument("--log", default="kefplayer_log.jsonl", help="JSON-Lines-Protokoll")
+    rd.add_argument("--poll", type=float, default=0.5, help="Abfrageintervall in s")
+    rd.add_argument("--plain-protocolinfo", action="store_true", help="in der Metadaten-protocolInfo '*' statt DLNA-Flags verwenden")
+    rd.set_defaults(func=cmd_radio)
 
     pl = sub.add_parser("play", help="Dateien oder Ordner auf dem Renderer abspielen")
     pl.add_argument("inputs", nargs="+")

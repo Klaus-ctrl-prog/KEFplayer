@@ -12,7 +12,9 @@ import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
-from .upnp import DLNA_FEATURES
+from typing import Callable
+
+from .upnp import DLNA_FEATURES, DLNA_FEATURES_LIVE
 
 
 class RangeNotSatisfiable(Exception):
@@ -53,6 +55,13 @@ class _Entry:
     name: str
 
 
+@dataclass
+class _StreamEntry:
+    opener: Callable[[], object]  # liefert ein Objekt mit read/read1 und close
+    mime: str
+    name: str
+
+
 def local_ip_for(target_host: str, port: int = 9) -> str:
     """Eigene IP auf der Route zum Zielgeraet (es wird nichts gesendet)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -76,6 +85,60 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self._serve(head=False)
 
+    def _stream_entry(self):
+        parts = urllib.parse.urlsplit(self.path).path.split("/")
+        if len(parts) == 4 and parts[0] == "" and parts[1] == "s":
+            return self.server.media.streams.get(parts[2]), parts[2]
+        return None, None
+
+    def _serve_stream(self, entry, token: str, head: bool) -> None:
+        """Live-Stream: keine Laenge, kein Seek; die Antwort endet mit dem Schliessen der Verbindung."""
+        media = self.server.media
+        status, sent = 200, 0
+        src = None
+        try:
+            if not head:
+                try:
+                    src = entry.opener()
+                except Exception:  # noqa: BLE001 - Quelle nicht erreichbar: dem Renderer 502 melden
+                    status = 502
+                    self.send_response(502)
+                    self.send_header("Content-Length", "0")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.close_connection = True
+                    return
+            self.send_response(200)
+            self.send_header("Content-Type", entry.mime)
+            self.send_header("transferMode.dlna.org", "Streaming")
+            self.send_header("contentFeatures.dlna.org", DLNA_FEATURES_LIVE)
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            if head:
+                return
+            read = getattr(src, "read1", None) or src.read  # read1: nicht auf volle Blockgroesse warten
+            while token in media.streams:
+                chunk = read(8192)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                sent += len(chunk)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            pass  # Renderer oder Sender beendet die Verbindung
+        finally:
+            if src is not None:
+                try:
+                    src.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            media._log_request({
+                "ts": time.time(), "client": self.client_address[0], "method": "HEAD" if head else "GET",
+                "token": token, "name": entry.name, "range": self.headers.get("Range"),
+                "status": status, "bytes_sent": sent,
+            })
+
     def _entry(self):
         parts = urllib.parse.urlsplit(self.path).path.split("/")
         if len(parts) == 4 and parts[0] == "" and parts[1] == "m":
@@ -84,6 +147,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def _serve(self, head: bool):
         media = self.server.media
+        s_entry, s_token = self._stream_entry()
+        if s_entry is not None:
+            return self._serve_stream(s_entry, s_token, head)
         entry, token = self._entry()
         rng_header = self.headers.get("Range")
         status, sent = 404, 0
@@ -154,6 +220,7 @@ class MediaServer:
         self.requested_port = port
         self.advertise_host = advertise_host
         self.entries: dict[str, _Entry] = {}
+        self.streams: dict[str, _StreamEntry] = {}
         self.request_log: list[dict] = []
         self._lock = threading.Lock()
         self._httpd: http.server.ThreadingHTTPServer | None = None
@@ -199,6 +266,17 @@ class MediaServer:
     def unregister(self, token: str) -> None:
         with self._lock:
             self.entries.pop(token, None)
+
+    def register_stream(self, opener: Callable[[], object], mime: str, name: str) -> tuple[str, str]:
+        """Live-Stream registrieren. ``opener`` oeffnet die Quelle erst beim GET des Renderers."""
+        token = secrets.token_hex(12)
+        with self._lock:
+            self.streams[token] = _StreamEntry(opener, mime, name)
+        return f"http://{self._host()}:{self.port}/s/{token}/{urllib.parse.quote(name)}", token
+
+    def unregister_stream(self, token: str) -> None:
+        with self._lock:
+            self.streams.pop(token, None)
 
     def _log_request(self, rec: dict) -> None:
         with self._lock:

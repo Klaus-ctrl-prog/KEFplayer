@@ -312,6 +312,42 @@ class Player:
         except (upnp.UpnpError, OSError) as e:
             self._emit("stop_failed", error=str(e))
 
+    def play_stream(self, opener, mime: str, ext: str, title: str, source: str) -> dict:
+        """Live-Stream (Radio) ueber den Medienserver abspielen. ``source`` ist bereits maskiert.
+
+        Kein Titelende und keine Zeitgrenze: Ende durch stop(), Fehler oder Stopp des Renderers.
+        """
+        with upnp.RENDERER_LOCK:
+            self.track_active.set()
+        try:
+            url, token = self.server.register_stream(opener, mime, name=f"{_safe(title)}{ext}")
+            didl = upnp.build_didl(title, url, mime, plain=self.plain, live=True)
+            res: dict = {"title": title, "source": source, "mime": mime, "live": True}
+            self._emit("stream_start", **res)
+            try:
+                with upnp.RENDERER_LOCK:
+                    self._call("set_uri", self.renderer.set_uri, url, didl)
+                    t_play = _clock()
+                    self._call("play", self.renderer.play)
+                res.update(self._wait(t_play, None, live=True))
+            except (upnp.UpnpError, OSError) as e:
+                res.update({"end_reason": "error", "error": str(e), "error_category": classify_error(e)})
+                self._safe_stop()
+            res.pop("_t_playing", None)
+            res.pop("_t_end", None)
+            res["requests"] = [
+                {k: r[k] for k in ("client", "method", "range", "status", "bytes_sent")}
+                for r in self.server.requests_for(token)
+            ]
+            self.server.unregister_stream(token)
+            if res.get("end_reason") == "never_started":
+                res["error_category"] = "renderer_fetched_no_play" if res["requests"] else "renderer_never_fetched"
+            self._emit("stream_end", **res)
+            return res
+        finally:
+            with upnp.RENDERER_LOCK:
+                self.track_active.clear()
+
     def _play_one(self, i: int, track: Track, prep: Prepared, prev_end: float | None) -> dict:
         info = prep.info
         duration = info.duration_s if info else None
@@ -363,14 +399,14 @@ class Player:
         self._emit("track_end", **{k: v for k, v in res.items() if k != "_t_end"})
         return res
 
-    def _wait(self, t_play: float, duration: float | None) -> dict:
+    def _wait(self, t_play: float, duration: float | None, *, live: bool = False) -> dict:
         r = self.renderer
         t_playing: float | None = None
         last_pos: float | None = None
         paused_total = 0.0
         paused_since: float | None = None
         errors = 0
-        max_wall = duration * 2 + 60 if duration else 3600.0
+        max_wall = float("inf") if live else (duration * 2 + 60 if duration else 3600.0)
 
         def finish(reason: str, **extra) -> dict:
             t_end = _clock()
