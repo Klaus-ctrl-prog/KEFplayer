@@ -35,6 +35,23 @@ def test_track_problem_uses_existing_error_classification():
     assert renderer["confidence"] == "low"
 
 
+def test_simultaneous_renderer_health_and_source_file_failure_stay_separate():
+    results = diagnose([
+        finding("health_renderer_http", "renderer"),
+        finding("track_problem", "audio", error_category="source_file_access"),
+    ])
+
+    by_symptom = {item["symptom"]: item for item in results}
+    assert set(by_symptom) == {"health_renderer_http", "track_problem"}
+    assert by_symptom["health_renderer_http"]["cause_hypotheses"][0]["cause"] == (
+        "renderer_or_network_path_unavailable"
+    )
+    assert by_symptom["track_problem"]["cause_hypotheses"][0]["cause"] == (
+        "source_file_unavailable_or_inaccessible"
+    )
+    assert all(item["proposed_action"] is None for item in results)
+
+
 def test_track_problem_categories_are_diagnosed_independently():
     results = diagnose([
         finding("track_problem", "audio", error_category="source_file_access"),
