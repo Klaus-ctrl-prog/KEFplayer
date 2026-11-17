@@ -26,8 +26,8 @@ def test_renderer_http_failure_is_low_confidence_and_never_executes_action():
 
 
 def test_track_problem_uses_existing_error_classification():
-    source = diagnose([finding("track_problem", audio, error_category="source_file_access")])[0]
-    renderer = diagnose([finding("track_problem", renderer, error_category="renderer_timeout")])[0]
+    source = diagnose([finding("track_problem", "audio", error_category="source_file_access")])[0]
+    renderer = diagnose([finding("track_problem", "renderer", error_category="renderer_timeout")])[0]
 
     assert source["cause_hypotheses"][0]["cause"] == "source_file_unavailable_or_inaccessible"
     assert source["confidence"] == "medium"
