@@ -419,6 +419,36 @@ def test_no_retry_while_stop_requested():
     assert r.calls == 1 and not ev
 
 
+def test_stop_interrupts_retry_backoff():
+    entered_backoff = threading.Event()
+    ev = []
+    r = _Flaky(99, ConnectionRefusedError())
+    p = Player(
+        r,
+        None,
+        retry_backoff_s=30.0,
+        on_event=lambda rec: (ev.append(rec), entered_backoff.set()),
+    )
+    outcome = []
+
+    def call():
+        try:
+            p._call("play", r.play)
+        except Exception as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=call, daemon=True)
+    worker.start()
+    assert entered_backoff.wait(2.0)
+    p.stop()
+    worker.join(1.0)
+
+    assert not worker.is_alive()
+    assert r.calls == 1
+    assert len(outcome) == 1 and isinstance(outcome[0], ConnectionRefusedError)
+    assert [e["event"] for e in ev] == ["renderer_retry"]
+
+
 def test_stop_uses_at_most_two_attempts_and_reports_stop_failed():
     p, r, ev = _retry_player(99, ConnectionRefusedError())
     p.renderer = r
