@@ -137,6 +137,8 @@ Der Hinweis `renderer_never_fetched` stützt sich auf das Anfrageprotokoll des M
 
 Die Gesundheitsüberwachung (`kefplayer/health.py`) läuft bei `play` standardmäßig in einem eigenen Daemon-Thread, auch zwischen den Titeln und vor dem Start. Einmalig ohne Wiedergabe: `kefplayer health` (siehe README).
 
+Beim einmaligen Befehl `kefplayer health` läuft der Medienserver noch nicht: Die Prüfung kontrolliert deshalb, ob der konfigurierte Port gebunden werden kann (Port frei = `ok`; belegt oder nicht nutzbar = `warn`). Während `play` prüft sie dagegen, ob der gestartete Medienserver-Thread läuft und Verbindungen annimmt. Der CLI-Exitcode ist **1 nur bei Gesamtstatus `error`**; `warn` und `unknown` liefern 0.
+
 | Komponente | Prüfung |
 |---|---|
 | `renderer_http` | Antwortet die Gerätebeschreibung (HTTP-GET)? |
