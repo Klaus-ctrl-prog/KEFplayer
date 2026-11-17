@@ -954,7 +954,8 @@ class StatusApp:
 
         def add(level, code, msg, category, ts=None, **ev):
             # ts: Zeitpunkt des zugrunde liegenden Ereignisses, wenn bekannt; sonst Zeitpunkt der Auswertung
-            if snap.get("queue") is not None:
+            if code in {"track_problem", "ended_early", "mime_not_in_sink", "sink_unavailable",
+                        "stop_failed", "cleanup_failed", "renderer_retries"} and snap.get("queue") is not None:
                 ev.setdefault("queue_started_at", snap["queue"].get("started_at"))
             out.append({"level": level, "code": code, "category": category, "message": msg,
                         "ts": ts or snap["now_iso"], "ts_source": "event" if ts else "evaluation", "evidence": ev})
