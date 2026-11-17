@@ -451,4 +451,4 @@ def test_diagnostics_includes_shadow_repair_decisions_without_actions():
     assert len(data["repair_decisions"]) == len(data["diagnoses"])
     assert all(item["simulated"] is True for item in data["repair_decisions"])
     assert all(item["repair_executed"] is False for item in data["repair_decisions"])
-    assert all(item["status"] in {"eligible", "deferred", "suppressed"} for item in data["repair_decisions"])
+    assert all(item["status"] in {"deferred", "suppressed"} for item in data["repair_decisions"])
