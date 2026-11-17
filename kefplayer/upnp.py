@@ -29,6 +29,8 @@ UA = "kefplayer/0.1 UPnP/1.0"
 RENDERER_LOCK = threading.RLock()
 DLNA_FLAGS = "01700000000000000000000000000000"
 DLNA_FEATURES = f"DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS={DLNA_FLAGS}"
+# Live-Stream: kein Byte-Seek, kein Zeit-Seek. Die FLAGS sind uebernommen (Annahme, an der Gen1 ungeprueft).
+DLNA_FEATURES_LIVE = f"DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS={DLNA_FLAGS}"
 
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -256,8 +258,8 @@ def pick_mime(ext: str, sink_mimes: list[str] | None = None, fmt: str | None = N
     return cands[0], None
 
 
-def protocol_info(mime: str, plain: bool = False) -> str:
-    return f"http-get:*:{mime}:{'*' if plain else DLNA_FEATURES}"
+def protocol_info(mime: str, plain: bool = False, live: bool = False) -> str:
+    return f"http-get:*:{mime}:{'*' if plain else (DLNA_FEATURES_LIVE if live else DLNA_FEATURES)}"
 
 
 def build_didl(
@@ -273,8 +275,9 @@ def build_didl(
     bits: int | None = None,
     size: int | None = None,
     plain: bool = False,
+    live: bool = False,
 ) -> str:
-    attrs = [f'protocolInfo="{escape(protocol_info(mime, plain), {chr(34): "&quot;"})}"']
+    attrs = [f'protocolInfo="{escape(protocol_info(mime, plain, live), {chr(34): "&quot;"})}"']
     if duration_s is not None:
         attrs.append(f'duration="{fmt_hms(duration_s)}"')
     if samplerate:
@@ -297,7 +300,7 @@ def build_didl(
         '<item id="0" parentID="-1" restricted="1">'
         f"<dc:title>{escape(title)}</dc:title>"
         f"{extra}"
-        "<upnp:class>object.item.audioItem.musicTrack</upnp:class>"
+        f"<upnp:class>{'object.item.audioItem.audioBroadcast' if live else 'object.item.audioItem.musicTrack'}</upnp:class>"
         f'<res {" ".join(attrs)}>{escape(url)}</res>'
         "</item></DIDL-Lite>"
     )
