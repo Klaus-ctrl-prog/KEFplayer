@@ -163,7 +163,7 @@ Beim einmaligen Befehl `kefplayer health` läuft der Medienserver noch nicht: Di
 
 - **Status:** `ok`, `warn`, `error` oder `unknown`; `overall` ist der schlechteste Wert.
 - **Intervall:** Standard 30 s, Untergrenze 15 s (`--health-interval`). Nur lesende Abfragen (HTTP-GET, `GetTransportInfo`).
-- **Keine Renderer-Abfragen, solange ein Titel spielt** (`monitor.renderer_checks_paused`); dann fragt der Player selbst. Medienserver und Cache werden weiter lokal geprüft. Der Zustand der Renderer-Komponenten bleibt bis zur nächsten Prüfung erhalten.
+- **Keine Renderer-Abfragen, solange ein Titel spielt** (`monitor.renderer_checks_paused`); dann fragt der Player selbst. Medienserver und Cache werden weiter lokal geprüft. Während der Pause werden die Renderer-Komponenten auf `unknown` gesetzt: Ein vorheriger Fehler bleibt nicht fälschlich als aktueller Fehler stehen. Nach Ende der Pause stellt die nächste echte Prüfung den Zustand wieder fest.
 - **Ereignisse:** nur bei Zustandswechsel (`health_change` mit `previous`, `status`, Kategorie, Meldung); kein Dauerrauschen im Protokoll. In `/logs` erscheinen sie mit `category` der Komponente und `level` nach Status. Auf der Konsole von `play` stehen nur Probleme und deren Behebung.
 - **Befunde:** `health_<komponente>` bei `warn`/`error` (Zeitpunkt = Beginn des Zustands), `health_monitor_stalled`, wenn die Überwachung keine aktuellen Runden mehr liefert. Nach regulärem Beenden gilt sie als `stopped`, nicht als hängend.
 - **Überwachung selbst:** `monitor.state` (`running`, `stalled`, `stopped`, `not_started`), `ticks`, `errors`, `last_error`, `last_tick_at`. Ein Fehler in einer Runde beendet den Thread nicht.
