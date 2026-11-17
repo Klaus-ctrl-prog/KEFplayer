@@ -44,7 +44,26 @@ def test_every_finding_has_category_ts_and_valid_values():
     assert f
     for x in f:
         assert x["category"] in api.CATEGORIES
+        assert x["scope"] == "queue"
         assert x["ts"] and x["ts_source"] in ("event", "evaluation")
+
+
+def test_process_findings_keep_process_scope_before_first_queue():
+    c = attached()
+    feed(c, ev("sink_unavailable", error="pre-queue failure"),
+         ev("renderer_retry", action="play", attempt=1, of=2, category="renderer_timeout", error="t", wait_s=0.5))
+    app = api.StatusApp(c)
+    findings = app.findings(c.snapshot(), {
+        "enabled": True, "ok": False, "error": "probe failed",
+    })
+    by_code = {item["code"]: item for item in findings}
+
+    assert by_code["sink_unavailable"]["scope"] == "process"
+    assert by_code["renderer_retries"]["scope"] == "process"
+    assert by_code["live_probe_failed"]["scope"] == "process"
+
+    summary = body(c, "/api/v1/diagnostics")["data"]["summary"]
+    assert summary["findings_by_scope"]["process"] >= 2
 
 
 def test_track_findings_use_error_category_and_event_time():
