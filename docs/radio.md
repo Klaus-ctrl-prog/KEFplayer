@@ -1,6 +1,6 @@
 # Internetradio (E1, Stand 18.11.2026)
 
-> **Hinweis (Planung E-6):** Die verbindliche Zielregel ist strenger als dieser Stand: nur **FLAC oder AAC ab 192 kbit/s**, mit Qualitätsprüfung vor dem Start. E1 lässt noch Ogg/Opus/MP4-Audio zu und prüft keine Bitrate; die Angleichung ist als E1.1 geplant. Siehe [radio-plan.md](radio-plan.md). Eine Favoritenvorlage liegt unter `examples/favorites.example.json` (Platzhalter-URLs, nicht belegt).
+> **Hinweis (Planung E-6):** Die verbindliche Zielregel ist strenger als dieser Stand: nur **FLAC oder AAC ab 192 kbit/s**, mit Qualitätsprüfung vor dem Start. E1 lässt noch Ogg/Opus/MP4-Audio zu und prüft keine Bitrate; die Angleichung ist als E1.1 geplant. Siehe [radio-plan.md](radio-plan.md). Eine Favoritenvorlage liegt unter `docs/favorites.example.json` (Platzhalter-URLs, nicht belegt).
 
 `kefplayer radio <URL oder Favoritenname> [--favorites DATEI] [--renderer ...]`
 

@@ -27,7 +27,7 @@ Ablauf (`kefplayer radio` bzw. eigenes `kefplayer radio-check`):
 - **Adaptive Streams (HLS, z. B. hr3):** ffmpeg wählt eine Variante; die **höchste Stufe muss erzwungen** werden (Variante gezielt wählen) und die Prüfung gilt für die tatsächlich gewählte Variante. Ob die Startkandidaten entsprechende URLs anbieten, ist **nicht belegt**.
 
 ## 4. Startliste (Rock, Pop, Classic Rock) und Vorlage
-Vorlage: `examples/favorites.example.json` (Liste von Objekten, angelehnt an die strukturierte Senderverwaltung von moOde Audio): `name`, `url`, `genre`, `expected_codec`, `min_bitrate_kbps`, `status` (`candidate`/`to_verify`/`verified`/`rejected`), `verified_at`, `notes`. Der heutige Loader liest `name` und `url`, die übrigen Felder werden ignoriert (Auswertung folgt mit E1.1).
+Vorlage: `docs/favorites.example.json` (Liste von Objekten, angelehnt an die strukturierte Senderverwaltung von moOde Audio): `name`, `url`, `genre`, `expected_codec`, `min_bitrate_kbps`, `status` (`candidate`/`to_verify`/`verified`/`rejected`), `verified_at`, `notes`. Der heutige Loader liest `name` und `url`, die übrigen Felder werden ignoriert (Auswertung folgt mit E1.1).
 
 | Sender | Rolle | Stand |
 |---|---|---|
@@ -85,4 +85,4 @@ Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch 
 - Echte, geprüfte **AAC-≥192-/FLAC-URLs** der Startsender (liefert der Nutzer oder die Senderseite; nicht aus Community-Listen übernehmen).
 
 ## 10. Verweise
-`docs/radio.md` (E1), `docs/radio-plan.md` (diese Planung auf main), `examples/favorites.example.json`, Projektdokument `claude/phase_e0_befunde.md` (nur im Projekt).
+`docs/radio.md` (E1), `docs/radio-plan.md` (diese Planung auf main), `docs/favorites.example.json`, Projektdokument `claude/phase_e0_befunde.md` (nur im Projekt).
