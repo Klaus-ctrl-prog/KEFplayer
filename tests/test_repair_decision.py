@@ -221,5 +221,5 @@ def test_unhashable_category_is_handled_conservatively():
     }
     decision = decide_repairs([diagnosis], [item], healthy())[0]
     assert decision["status"] == "deferred"
-    assert decision["reason"] == "finding_scope_ambiguous"
+    assert decision["reason"] == "finding_evidence_invalid"
     assert decision["scope"] == "unknown"
