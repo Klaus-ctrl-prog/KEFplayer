@@ -26,27 +26,28 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
     if not isinstance(findings, list):
         raise TypeError("findings must be a list")
 
-    grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for finding in findings:
         if not isinstance(finding, dict):
             continue
         code = finding.get("code")
         if not isinstance(code, str) or not code:
             continue
-        category = finding.get("category")
-        component = {
-            "renderer": "renderer",
-            "upnp": "upnp",
-            "media_server": "media_server",
-            "audio": "audio",
-            "dsp": "dsp",
-            "cache": "cache",
-            "diagnostics": "diagnostics",
-        }.get(category, "process")
-        grouped[(component, code)].append(finding)
+        grouped[code].append(finding)
 
+    category_components = {
+        "renderer": "renderer",
+        "upnp": "upnp",
+        "media_server": "media_server",
+        "audio": "audio",
+        "dsp": "dsp",
+        "cache": "cache",
+        "diagnostics": "diagnostics",
+    }
     records: list[dict[str, Any]] = []
-    for (component, code), items in sorted(grouped.items()):
+    for code, items in sorted(grouped.items()):
+        components = {category_components.get(item.get("category"), "process") for item in items}
+        component = next(iter(components)) if len(components) == 1 else "playback"
         evidence = []
         for item in items:
             evidence.append({
