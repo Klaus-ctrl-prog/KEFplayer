@@ -174,11 +174,26 @@ def test_renderer_soap_calls_share_one_lock(env, monkeypatch):
 
 def test_health_skips_renderer_when_shared_lock_is_held(env):
     m = _mon(env)
-    with upnp.RENDERER_LOCK:
+    locked = threading.Event()
+    release = threading.Event()
+
+    def hold_lock():
+        with upnp.RENDERER_LOCK:
+            locked.set()
+            assert release.wait(2)
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    assert locked.wait(2)
+    try:
         m.tick()
         snap = m.snapshot()
         assert snap["renderer_checks_paused"] is True
         assert sorted(snap["components"]) == ["cache", "media_server"]
+    finally:
+        release.set()
+        holder.join(2)
+    assert not holder.is_alive()
     m.tick()
     assert "renderer_upnp" in m.snapshot()["components"]
 
