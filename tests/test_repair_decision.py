@@ -74,6 +74,16 @@ def test_uncertain_renderer_health_is_deferred(health, reason):
     assert decision["status"] == "deferred" and decision["reason"] == reason
 
 
+@pytest.mark.parametrize("status", ["warn", "error"])
+def test_degraded_required_health_is_not_treated_as_healthy(status):
+    health = healthy()
+    health["components"]["renderer_http"]["status"] = status
+    findings = [finding("health_renderer_http")]
+    decision = decide_repairs(diagnose(findings), findings, health)[0]
+    assert decision["status"] == "deferred"
+    assert decision["reason"] == "required_health_not_ok"
+
+
 def test_missing_health_component_is_not_assumed_healthy():
     health = healthy()
     del health["components"]["renderer_http"]
