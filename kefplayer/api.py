@@ -38,6 +38,7 @@ from http import HTTPStatus
 
 from . import __version__
 from .diagnosis import diagnose
+from .repair_decision import decide_repairs
 
 API_VERSION = 1
 DEFAULT_PORT = 8766            # 8765 ist der Standardport des Medienservers
@@ -1039,6 +1040,8 @@ class StatusApp:
         reasons = collections.Counter(str(r.get("end_reason")) for r in rs)
         findings = self.findings(snap, live)
         diagnoses = diagnose(findings, mode="shadow")
+        health_data, _ = self.health_status(snap)
+        repair_decisions = decide_repairs(diagnoses, findings, health_data)
         counts = collections.Counter(f["level"] for f in findings)
         tracks = [self._track_summary(r, snap) for r in rs[-MAX_TRACKS_IN_DIAG:]]
         evs = [self._ev(e) for e in snap["events"][-n_events:]] if n_events > 0 else []
@@ -1056,7 +1059,8 @@ class StatusApp:
             },
             "findings": findings,
             "diagnoses": diagnoses,
-            "health": self.health_status(snap)[0],
+            "repair_decisions": repair_decisions,
+            "health": health_data,
             "timing": self.timing(snap),
             "status": st, "renderer": rn, "dsp": ds, "audio": au,
             "tracks": tracks, "tracks_omitted": max(0, len(rs) - len(tracks)),
