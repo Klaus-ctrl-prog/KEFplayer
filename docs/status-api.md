@@ -55,10 +55,24 @@ Alle unter `http://127.0.0.1:8766`. `/` und `/api/v1` listen die Endpunkte auf.
 | `/api/v1/dsp` | Aktives Profil, Filter, Preamp-Einstellung, Kanalpegel und -verzögerungen (L/R), je Titel angewendeter Preamp/Spitzenwerte |
 | `/api/v1/audio` | Je Titel Quellformat, Zielformat (gesendet), MIME, „im Sink gemeldet“, Verarbeitungspfad (`original`/`convert`/`dsp`) |
 | `/api/v1/logs` | Letzte Ereignisse dieses Prozesses, Parameter `limit` (1–300, Standard 50), `since` (nur Ereignisse mit größerer `seq`), `level` (`info`/`warn`/`error`), `category` (`renderer`, `upnp`, `media_server`, `audio`, `dsp`, `cache`, `process`, `diagnostics`; ungültig = 400) |
-| `/api/v1/diagnostics` | Zusammenfassung für die technische Analyse (siehe unten), Parameter `events` (0–300, Standard 100) |
+| `/api/v1/diagnostics` | Zusammenfassung, vorhandene Befunde (`findings`) und konservative D0-Ursachenhypothesen (`diagnoses`), Parameter `events` (0–300, Standard 100) |
 | `/api/v1/health` | Zustand von Renderer (HTTP und UPnP), Medienserver und Cache sowie der Überwachung selbst (siehe „Gesundheit“) |
 
 Alle Endpunkte akzeptieren `?pretty=1` (eingerückte Ausgabe). Unbekannte oder mehrfach angegebene Parameter werden mit 400 abgelehnt.
+
+### D0-Diagnosen (`data.diagnoses`)
+
+Die Diagnosen werden ausschließlich aus den bereits vorhandenen `findings` abgeleitet. Sie führen keine zusätzlichen Prüfungen, Netzwerkzugriffe oder Aktionen aus. `findings` bleiben unverändert und sind weiterhin die maßgebliche Beobachtungsebene.
+
+- `shadow_propose`: Eine bekannte, vorsichtige Regel passt; die Ursache ist eine Hypothese, keine bestätigte Diagnose.
+- `suppress`: Keine ausreichend passende Regel oder widersprüchliche Evidenz; es wird keine Ursache behauptet.
+- `observe`: Nur im internen Modus `off`; es wird ausschließlich beobachtet.
+- `proposed_action` ist in D0 immer `null`. Es gibt keinen Reparaturcode.
+- `confidence` ist `low`, `medium` oder `unknown`; `high` wird in D0 nicht vergeben.
+- `evidence` enthält die zugehörigen vorhandenen Befunde einschließlich Kategorie, Zeitstempel und Evidenzdaten.
+- `verification` ist `not_applicable_d0_no_action`, weil keine Aktion ausgeführt wird.
+
+Gleiche Befundcodes werden zunächst zusammengefasst. Bei `track_problem` führen unterschiedliche Fehlerklassen innerhalb dieser Gruppe bewusst zur Unterdrückung statt zu einer pauschalen Ursache. Unbekannte Befundcodes bleiben sichtbar, erhalten aber keine Hypothese. D0 ist damit eine Diagnose-/Beobachtungsschicht und keine Selbstreparatur.
 
 ### Antwortrahmen
 
