@@ -281,7 +281,8 @@ class StatusCollector:
         self._results: collections.OrderedDict = collections.OrderedDict()
         self._proc: dict[int, dict] = {}
         self._sink: dict = {"state": "not_read"}
-        self._counters = collections.Counter()
+        self._counters = collections.Counter()  # Prozessweite Summen, bestehendes API-Verhalten
+        self._queue_counters = collections.Counter()  # Fehlerzaehler der aktuellen Wiedergabesitzung
         self._last_hook_error: str | None = None
         self._source_cache: dict[str, dict] = {}
         self._source_lock = threading.Lock()
@@ -405,6 +406,7 @@ class StatusCollector:
             self._queue = {"started_at": g("ts"), "mono": now, "n_tracks": len(g("tracks") or []),
                            "profile": g("profile") if isinstance(g("profile"), dict) else None,
                            "profile_neutral": g("profile_neutral"), "poll_s": g("poll_s")}
+            self._queue_counters = collections.Counter()
             self._queue_end = None
             self._cur = None
             self._results = collections.OrderedDict()
@@ -417,6 +419,8 @@ class StatusCollector:
         elif ev == "sink_unavailable":
             self._sink = {"state": "unavailable", "at": g("ts"), "error": str(g("error"))[:1000]}
             self._counters["sink_unavailable"] += 1
+            if self._queue is not None:
+                self._queue_counters["sink_unavailable"] += 1
         elif ev == "track_processed":
             idx = g("index")
             if not _is_index(idx):
@@ -473,12 +477,20 @@ class StatusCollector:
             self._phase = "queue_ended"
         elif ev == "stop_failed":
             self._counters["stop_failed"] += 1
+            if self._queue is not None:
+                self._queue_counters["stop_failed"] += 1
         elif ev == "cleanup_failed":
             self._counters["cleanup_failed"] += 1
+            if self._queue is not None:
+                self._queue_counters["cleanup_failed"] += 1
         elif ev == "renderer_retry":
             self._counters["renderer_retry"] += 1
+            if self._queue is not None:
+                self._queue_counters["renderer_retry"] += 1
         elif ev == "renderer_recovered":
             self._counters["renderer_recovered"] += 1
+            if self._queue is not None:
+                self._queue_counters["renderer_recovered"] += 1
 
     def count_request(self, key: str) -> None:
         with self._lock:
@@ -510,6 +522,7 @@ class StatusCollector:
                 "sink": dict(self._sink),
                 "cfg": dict(self._cfg),
                 "counters": dict(self._counters),
+                "queue_counters": dict(self._queue_counters),
                 "hook_error": self._last_hook_error,
                 "api_errors": self.api_errors,
                 "api_last_error": self.api_last_error,
@@ -940,6 +953,8 @@ class StatusApp:
 
         def add(level, code, msg, category, ts=None, **ev):
             # ts: Zeitpunkt des zugrunde liegenden Ereignisses, wenn bekannt; sonst Zeitpunkt der Auswertung
+            if snap.get("queue") is not None:
+                ev.setdefault("queue_started_at", snap["queue"].get("started_at"))
             out.append({"level": level, "code": code, "category": category, "message": msg,
                         "ts": ts or snap["now_iso"], "ts_source": "event" if ts else "evaluation", "evidence": ev})
 
@@ -960,14 +975,15 @@ class StatusApp:
                 error=scrub(snap["sink"].get("error", ""), self.details))
         for key, code, txt, cat in (("stop_failed", "stop_failed", "Stop am Renderer schlug fehl", "renderer"),
                                     ("cleanup_failed", "cleanup_failed", "Temporaere Datei konnte nicht geloescht werden", "cache")):
-            n = snap["counters"].get(key, 0)
+            n = snap.get("queue_counters", {}).get(key, 0)
             if n:
                 add("warn", code, f"{txt} ({n}x).", cat, count=n)
-        n_retry = snap["counters"].get("renderer_retry", 0)
+        n_retry = snap.get("queue_counters", {}).get("renderer_retry", 0)
         if n_retry:
+            recovered = snap.get("queue_counters", {}).get("renderer_recovered", 0)
             add("warn", "renderer_retries", f"Renderer-Aufrufe wurden {n_retry}x wiederholt "
-                f"({snap['counters'].get('renderer_recovered', 0)}x danach erfolgreich).", "renderer",
-                retries=n_retry, recovered=snap["counters"].get("renderer_recovered", 0))
+                f"({recovered}x danach erfolgreich).", "renderer",
+                retries=n_retry, recovered=recovered)
         h = self.c.health.snapshot() if self.c.health is not None else None
         if h is not None:
             for comp, r in h["components"].items():
