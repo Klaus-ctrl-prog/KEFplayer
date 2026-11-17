@@ -92,10 +92,18 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
                 "The health monitor recorded internal errors; its last error is supporting evidence.",
             )]
         elif code == "renderer_retries":
-            hypotheses = [_hypothesis(
-                "transient_renderer_command_failure", "low",
-                "Retries were recorded; successful recovery counts, if present, distinguish transient from persistent failure.",
-            )]
+            retry_evidence = [x.get("evidence", {}) for x in evidence]
+            recovered = [x.get("recovered") for x in retry_evidence]
+            if recovered and all(isinstance(n, int) and not isinstance(n, bool) and n > 0 for n in recovered):
+                hypotheses = [_hypothesis(
+                    "renderer_command_failure_with_recorded_recovery", "low",
+                    "At least one retry sequence has a recorded recovery; this supports a transient failure but does not identify its cause.",
+                )]
+            elif recovered and all(n == 0 for n in recovered):
+                hypotheses = [_hypothesis(
+                    "renderer_command_retry_without_recorded_recovery", "low",
+                    "Retries were recorded without a successful recovery; this does not prove the renderer is offline or identify the cause.",
+                )]
         elif code == "stop_failed":
             hypotheses = [_hypothesis(
                 "renderer_stop_command_failed", "low",
