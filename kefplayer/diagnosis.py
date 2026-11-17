@@ -123,6 +123,11 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
                     "audio_processing_failure", "medium",
                     "The playback finding classifies the failure in the audio-processing path.",
                 )]
+            elif categories == {"cache_io"}:
+                hypotheses = [_hypothesis(
+                    "cache_write_or_storage_problem", "medium",
+                    "The playback finding classifies the failure as cache I/O related.",
+                )]
             elif categories and categories <= {
                 "renderer_timeout", "renderer_unreachable", "renderer_fetched_no_play",
                 "playback_timeout", "renderer_soap_fault", "renderer_http_error",
