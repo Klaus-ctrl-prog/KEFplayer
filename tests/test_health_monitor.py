@@ -248,35 +248,51 @@ def test_player_waits_for_inflight_health_check_before_sink_protocol_info(env, t
     mock, server, info, tmp, events, emit = env
     entered = threading.Event()
     release = threading.Event()
+    player_started = threading.Event()
     real_http = health.check_renderer_http
 
     def blocked_http(*args, **kwargs):
         entered.set()
-        assert release.wait(2)
+        assert release.wait(5)
         return real_http(*args, **kwargs)
 
     monkeypatch.setattr(health, "check_renderer_http", blocked_http)
     monitor = _mon(env)
     monitor_thread = threading.Thread(target=monitor.tick)
     monitor_thread.start()
-    assert entered.wait(2)
 
     player = Player(upnp.Renderer(info), server, log=RunLog(None), poll_s=0.02)
     source = tone_factory("startup-lock", seconds=0.5)
     result = []
-    player_thread = threading.Thread(target=lambda: result.extend(player.play_queue([source])))
-    player_thread.start()
-    assert wait_for(lambda: player.track_active.is_set())
-    # Health prueft gerade HTTP; Player darf GetProtocolInfo erst nach Freigabe senden.
-    assert mock.actions == []
-    release.set()
-    monitor_thread.join(2)
-    player_thread.join(5)
-    assert not monitor_thread.is_alive() and not player_thread.is_alive()
-    assert any(a[0] == "GetProtocolInfo" for a in mock.actions)
-    assert len(result) == 1 and not player.track_active.is_set()
 
+    def play():
+        player_started.set()
+        result.extend(player.play_queue([source]))
 
+    player_thread = threading.Thread(target=play)
+    try:
+        assert entered.wait(2)
+        player_thread.start()
+        assert player_started.wait(2)
+        # Health haelt RENDERER_LOCK: Der Player darf weder die Sitzung
+        # aktivieren noch GetProtocolInfo senden, bevor Health fertig ist.
+        time.sleep(0.05)
+        assert not player.track_active.is_set()
+        assert mock.actions == []
+
+        release.set()
+        monitor_thread.join(2)
+        assert not monitor_thread.is_alive()
+        assert wait_for(lambda: player.track_active.is_set())
+        assert wait_for(lambda: any(a[0] == "GetProtocolInfo" for a in mock.actions))
+        player_thread.join(5)
+        assert not player_thread.is_alive()
+        assert len(result) == 1 and not player.track_active.is_set()
+    finally:
+        release.set()
+        if player_thread.ident is not None:
+            player_thread.join(5)
+        monitor_thread.join(2)
 def test_player_track_active_flag(rig, tone_factory):
     mock, server, player = rig()
     seen = []
