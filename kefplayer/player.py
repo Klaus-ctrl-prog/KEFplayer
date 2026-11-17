@@ -154,7 +154,7 @@ class Player:
         self.retry_backoff_s = max(0.0, float(retry_backoff_s))
         self.sink_mimes: list[str] = []
         self._stop = threading.Event()
-        self.track_active = threading.Event()  # gesetzt, solange ein Titel am Renderer vorbereitet/gespielt wird
+        self.track_active = threading.Event()  # gesetzt waehrend der gesamten Renderer-Wiedergabesitzung
         self._skip = threading.Event()
         self._pause = threading.Event()
         self._cache: Path | None = None
@@ -209,6 +209,8 @@ class Player:
             self._cache, self._own_cache = Path(tmp.name), True
         else:
             self._cache, self._own_cache = self.cache_dir, False
+        self.track_active.set()
+        upnp.RENDERER_LOCK.acquire()
         try:
             self._emit(
                 "queue_start",
@@ -240,19 +242,19 @@ class Player:
                         self._emit("track_end", **res)
                         results.append(res)
                         continue
-                    self.track_active.set()
-                    try:
-                        res = self._play_one(i, tr, prep, prev_end)
-                    finally:
-                        self.track_active.clear()
+                    res = self._play_one(i, tr, prep, prev_end)
                     prev_end = res.pop("_t_end", None)
                     results.append(res)
                     if self._own_cache and prep.report is not None:
                         self._remove(prep.path)
         finally:
-            self._emit("queue_end", played=len(results), reasons=[r.get("end_reason") for r in results])
-            if tmp:
-                tmp.cleanup()
+            try:
+                self._emit("queue_end", played=len(results), reasons=[r.get("end_reason") for r in results])
+                if tmp:
+                    tmp.cleanup()
+            finally:
+                upnp.RENDERER_LOCK.release()
+                self.track_active.clear()
         return results
 
     def _load_sink(self) -> None:

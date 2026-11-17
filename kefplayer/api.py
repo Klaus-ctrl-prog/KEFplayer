@@ -235,9 +235,15 @@ class LiveProbe:
         if refresh and (last is None or now - last["mono"] >= self.interval_s):
             if self._busy.acquire(blocking=False):  # nur ein Abfrager gleichzeitig; die anderen nehmen den Cache
                 try:
-                    res = self._query()
-                    with self._lock:
-                        self._last = last = res
+                    # Live-Abfragen sind Beobachter: nie waehrend einer Player-/Health-Sitzung
+                    # warten oder parallel SOAP an denselben Renderer senden.
+                    if self._upnp.RENDERER_LOCK.acquire(blocking=False):
+                        try:
+                            res = self._query()
+                            with self._lock:
+                                self._last = last = res
+                        finally:
+                            self._upnp.RENDERER_LOCK.release()
                 finally:
                     self._busy.release()
         return dict(last) if last else None

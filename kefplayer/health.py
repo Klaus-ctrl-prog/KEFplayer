@@ -161,13 +161,22 @@ class HealthMonitor:
     def tick(self) -> None:
         results: list[dict] = []
         paused = bool(self._busy())
-        if not paused:
-            http = check_renderer_http(self.info, self.timeout_s)
-            if http["status"] == "error":
-                up = _result("renderer_upnp", "unknown", "upnp", "Uebersprungen: Renderer per HTTP nicht erreichbar.")
-            else:
-                up = check_renderer_upnp(self.info, self.timeout_s)
-            results += [http, up]
+        # Nicht warten: waehrend einer Wiedergabesitzung Renderer-Pruefungen auslassen,
+        # lokale Pruefungen aber weiter ausfuehren. Das erfasst auch den Start vor dem
+        # ersten Track und faengt eine bereits laufende Monitor-Runde sicher ab.
+        renderer_lock = upnp.RENDERER_LOCK
+        if not paused and renderer_lock.acquire(blocking=False):
+            try:
+                http = check_renderer_http(self.info, self.timeout_s)
+                if http["status"] == "error":
+                    up = _result("renderer_upnp", "unknown", "upnp", "Uebersprungen: Renderer per HTTP nicht erreichbar.")
+                else:
+                    up = check_renderer_upnp(self.info, self.timeout_s)
+                results += [http, up]
+            finally:
+                renderer_lock.release()
+        else:
+            paused = True
         results.append(check_media_server(self.server))
         results.append(check_cache(self.cache_dir))
         for r in results:

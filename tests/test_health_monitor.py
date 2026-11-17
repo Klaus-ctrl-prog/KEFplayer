@@ -139,6 +139,50 @@ def test_no_monitor_requests_to_renderer_during_track(env, tmp_path, tone_factor
     assert len(stamps) == n + 1
 
 
+def test_renderer_soap_calls_share_one_lock(env, monkeypatch):
+    # Zwei voneinander unabhhaengige Renderer-Objekte muessen dieselbe Sperre nutzen.
+    entered = threading.Event()
+    release = threading.Event()
+    calls = []
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self):
+            calls.append(threading.current_thread().name)
+            if threading.current_thread().name == "soap-first":
+                entered.set()
+                assert release.wait(2)
+            return (b'<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><CurrentTransportState>STOPPED</CurrentTransportState></u:GetTransportInfoResponse></s:Body></s:Envelope>')
+    class Opener:
+        def open(self, *args, **kwargs): return Response()
+    monkeypatch.setattr(upnp, "_OPENER", Opener())
+    r1 = upnp.Renderer(env[2])
+    r2 = upnp.Renderer(env[2])
+    first = threading.Thread(target=lambda: r1.transport_info(), name="soap-first")
+    second = threading.Thread(target=lambda: r2.transport_info(), name="soap-second")
+    first.start()
+    assert entered.wait(2)
+    second.start()
+    time.sleep(0.05)
+    assert calls == ["soap-first"]
+    release.set()
+    first.join(2)
+    second.join(2)
+    assert not first.is_alive() and not second.is_alive()
+    assert calls == ["soap-first", "soap-second"]
+
+
+def test_health_skips_renderer_when_shared_lock_is_held(env):
+    m = _mon(env)
+    with upnp.RENDERER_LOCK:
+        m.tick()
+        snap = m.snapshot()
+        assert snap["renderer_checks_paused"] is True
+        assert sorted(snap["components"]) == ["cache", "media_server"]
+    m.tick()
+    assert "renderer_upnp" in m.snapshot()["components"]
+
+
 def test_player_track_active_flag(rig, tone_factory):
     mock, server, player = rig()
     seen = []
