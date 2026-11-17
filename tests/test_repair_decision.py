@@ -109,6 +109,78 @@ def test_inputs_are_not_mutated():
     assert (findings, diagnoses) == before
 
 
+
+def test_unrelated_health_component_does_not_block_source_file_diagnosis():
+    findings = [finding("track_problem", "audio", "queue", error_category="source_file_access")]
+    health = {"enabled": False}
+    decision = decide_repairs(diagnose(findings), findings, health)[0]
+    assert decision["status"] == "deferred"
+    assert decision["reason"] == "no_repair_action_approved_in_d1"
+    assert decision["scope"] == "queue"
+
+
+def test_renderer_http_cause_does_not_require_unrelated_upnp_component():
+    findings = [finding("health_renderer_http")]
+    health = {
+        "enabled": True,
+        "monitor": {"state": "running", "renderer_checks_paused": False},
+        "components": {"renderer_http": {"status": "ok"}},
+    }
+    decision = decide_repairs(diagnose(findings), findings, health)[0]
+    assert decision["reason"] == "no_repair_action_approved_in_d1"
+
+
+def test_upnp_cause_does_not_require_unrelated_http_component():
+    findings = [finding("health_renderer_upnp", "upnp")]
+    health = {
+        "enabled": True,
+        "monitor": {"state": "running", "renderer_checks_paused": False},
+        "components": {"renderer_upnp": {"status": "ok"}},
+    }
+    decision = decide_repairs(diagnose(findings), findings, health)[0]
+    assert decision["reason"] == "no_repair_action_approved_in_d1"
+
+
+def test_delivery_path_health_gate_uses_evidenced_error_category():
+    findings = [finding("track_problem", "renderer", "queue",
+                         error_category="renderer_never_fetched")]
+    diagnoses = diagnose(findings)
+    health = {
+        "enabled": True,
+        "monitor": {"state": "running", "renderer_checks_paused": False},
+        "components": {"media_server": {"status": "warn"}},
+    }
+    decision = decide_repairs(diagnoses, findings, health)[0]
+    assert decision["reason"] == "required_health_not_ok"
+
+
+def test_d0_evidence_mismatch_prevents_scope_inference():
+    findings = [finding("health_renderer_http")]
+    diagnoses = diagnose(findings)
+    changed = [finding("health_renderer_http", error="different evidence")]
+    decision = decide_repairs(diagnoses, changed, healthy())[0]
+    assert decision["status"] == "deferred"
+    assert decision["reason"] == "finding_evidence_mismatch"
+    assert decision["scope"] == "unknown"
+
+
+def test_truncated_d0_evidence_prevents_scope_inference():
+    findings = [finding("health_renderer_http", detail=i) for i in range(26)]
+    decision = decide_repairs(diagnose(findings), findings, healthy())[0]
+    assert decision["status"] == "deferred"
+    assert decision["reason"] == "finding_evidence_truncated"
+    assert decision["scope"] == "unknown"
+
+
+def test_duplicate_evidence_with_different_scopes_is_ambiguous():
+    findings = [finding("health_renderer_http", scope="queue"),
+                finding("health_renderer_http", scope="process")]
+    diagnoses = diagnose(findings)
+    decision = decide_repairs(diagnoses, findings, healthy())[0]
+    assert decision["reason"] == "finding_scope_ambiguous"
+    assert decision["scope"] == "unknown"
+
+
 def test_invalid_input_types_raise():
     with pytest.raises(TypeError, match="diagnoses"):
         decide_repairs({}, [], healthy())
