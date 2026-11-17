@@ -975,14 +975,17 @@ class StatusApp:
         if snap["sink"]["state"] == "unavailable":
             add("warn", "sink_unavailable", "Sink-Formate des Renderers waren nicht lesbar.", "upnp", snap["sink"].get("at"),
                 error=scrub(snap["sink"].get("error", ""), self.details))
+        # Vor queue_start eingehende Ereignisse behalten die historische Prozess-Sicht;
+        # sobald eine Queue existiert, werden nur noch deren Zaehler diagnostiziert.
+        counters = snap.get("queue_counters", {}) if snap.get("queue") is not None else snap["counters"]
         for key, code, txt, cat in (("stop_failed", "stop_failed", "Stop am Renderer schlug fehl", "renderer"),
                                     ("cleanup_failed", "cleanup_failed", "Temporaere Datei konnte nicht geloescht werden", "cache")):
-            n = snap.get("queue_counters", {}).get(key, 0)
+            n = counters.get(key, 0)
             if n:
                 add("warn", code, f"{txt} ({n}x).", cat, count=n)
-        n_retry = snap.get("queue_counters", {}).get("renderer_retry", 0)
+        n_retry = counters.get("renderer_retry", 0)
         if n_retry:
-            recovered = snap.get("queue_counters", {}).get("renderer_recovered", 0)
+            recovered = counters.get("renderer_recovered", 0)
             add("warn", "renderer_retries", f"Renderer-Aufrufe wurden {n_retry}x wiederholt "
                 f"({recovered}x danach erfolgreich).", "renderer",
                 retries=n_retry, recovered=recovered)
