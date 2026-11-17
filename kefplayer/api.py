@@ -407,6 +407,7 @@ class StatusCollector:
                            "profile": g("profile") if isinstance(g("profile"), dict) else None,
                            "profile_neutral": g("profile_neutral"), "poll_s": g("poll_s")}
             self._queue_counters = collections.Counter()
+            self._sink = {"state": "not_read"}
             self._queue_end = None
             self._cur = None
             self._results = collections.OrderedDict()
