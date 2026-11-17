@@ -35,16 +35,19 @@ def test_track_problem_uses_existing_error_classification():
     assert renderer["confidence"] == "low"
 
 
-def test_ambiguous_track_problem_is_suppressed():
-    result = diagnose([
+def test_track_problem_categories_are_diagnosed_independently():
+    results = diagnose([
         finding("track_problem", "audio", error_category="source_file_access"),
         finding("track_problem", "renderer", error_category="renderer_timeout"),
-    ])[0]
+    ])
 
-    assert result["decision"] == "suppress"
-    assert result["cause_hypotheses"] == []
-    assert result["suppression_reason"] == "no_supported_rule"
-    assert len(result["evidence"]) == 2
+    by_id = {item["diagnosis_id"]: item for item in results}
+    source = by_id["audio:track_problem:source_file_access"]
+    renderer = by_id["renderer:track_problem:renderer_timeout"]
+    assert source["decision"] == renderer["decision"] == "shadow_propose"
+    assert source["cause_hypotheses"][0]["cause"] == "source_file_unavailable_or_inaccessible"
+    assert renderer["cause_hypotheses"][0]["cause"] == "renderer_or_delivery_path_playback_failure"
+    assert source["proposed_action"] is renderer["proposed_action"] is None
 
 
 def test_unknown_finding_is_preserved_but_not_guessed():
@@ -157,14 +160,20 @@ def test_simultaneous_renderer_and_media_server_findings_stay_separate():
     assert all(item["proposed_action"] is None for item in result)
 
 
-def test_track_problem_with_missing_or_unknown_error_category_is_suppressed():
-    result = diagnose([
+def test_track_problem_unknown_category_is_separately_suppressed():
+    results = diagnose([
         finding("track_problem", "audio", error_category="source_file_access"),
         finding("track_problem", "renderer"),
-    ])[0]
+        finding("track_problem", "audio", error_category="future_unknown_category"),
+    ])
 
-    assert result["decision"] == "suppress"
-    assert result["cause_hypotheses"] == []
+    assert len(results) == 3
+    supported = next(x for x in results if x["diagnosis_id"].endswith(":source_file_access"))
+    unknown = [x for x in results if x["decision"] == "suppress"]
+    assert supported["decision"] == "shadow_propose"
+    assert len(unknown) == 2
+    assert all(x["cause_hypotheses"] == [] for x in unknown)
+    assert all(x["proposed_action"] is None for x in results)
 
 
 def test_track_problem_mixed_categories_are_suppressed_independent_of_order():
@@ -176,9 +185,10 @@ def test_track_problem_mixed_categories_are_suppressed_independent_of_order():
     forward = diagnose(items)[0]
     reverse = diagnose(list(reversed(items)))[0]
 
-    assert forward["decision"] == reverse["decision"] == "suppress"
-    assert forward["cause_hypotheses"] == reverse["cause_hypotheses"] == []
-    assert forward["component"] == reverse["component"] == "playback"
+    assert len(forward) == len(reverse) == 2
+    assert {x["diagnosis_id"] for x in forward} == {x["diagnosis_id"] for x in reverse}
+    assert all(x["decision"] == "shadow_propose" for x in forward + reverse)
+    assert all(x["proposed_action"] is None for x in forward + reverse)
 
 
 def test_same_supported_track_problem_category_remains_diagnosable_when_repeated():
