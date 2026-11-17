@@ -193,6 +193,19 @@ def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
     assert track[0]["proposed_action"] is None
     assert all(d["proposed_action"] is None for d in data["diagnoses"])
 
+    # Die API-Kette muss unabhängige Befundcodes getrennt an D0 weitergeben.
+    diagnosis_by_symptom = {item["symptom"]: item for item in data["diagnoses"]}
+    finding_codes = {item["code"] for item in data["findings"]}
+    assert set(diagnosis_by_symptom) == finding_codes
+
+    sink = diagnosis_by_symptom["sink_unavailable"]
+    cleanup = diagnosis_by_symptom["cleanup_failed"]
+    assert sink["component"] == "upnp"
+    assert sink["decision"] == "shadow_propose"
+    assert cleanup["component"] == "cache"
+    assert cleanup["decision"] == "suppress"
+    assert sink["symptom"] != cleanup["symptom"]
+
 def test_operational_findings_do_not_leak_across_playback_queues():
     c = attached()
     feed(c,
