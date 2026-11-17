@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 
 from . import __version__
+from .diagnosis import diagnose
 
 API_VERSION = 1
 DEFAULT_PORT = 8766            # 8765 ist der Standardport des Medienservers
@@ -1013,6 +1014,7 @@ class StatusApp:
         rs = snap["results"]
         reasons = collections.Counter(str(r.get("end_reason")) for r in rs)
         findings = self.findings(snap, live)
+        diagnoses = diagnose(findings, mode="shadow")
         counts = collections.Counter(f["level"] for f in findings)
         tracks = [self._track_summary(r, snap) for r in rs[-MAX_TRACKS_IN_DIAG:]]
         evs = [self._ev(e) for e in snap["events"][-n_events:]] if n_events > 0 else []
@@ -1028,6 +1030,7 @@ class StatusApp:
                 "renderer_model": ((rn.get("identity") or {}).get("model_name")),
             },
             "findings": findings,
+            "diagnoses": diagnoses,
             "health": self.health_status(snap)[0],
             "timing": self.timing(snap),
             "status": st, "renderer": rn, "dsp": ds, "audio": au,
