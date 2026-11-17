@@ -186,3 +186,40 @@ def test_invalid_input_types_raise():
         decide_repairs({}, [], healthy())
     with pytest.raises(TypeError, match="findings"):
         decide_repairs([], {}, healthy())
+
+
+
+def test_unhashable_scope_is_deferred_instead_of_raising():
+    item = finding("health_renderer_http", scope=["queue"])
+    diagnosis = {
+        "diagnosis_id": "renderer:health_renderer_http",
+        "cause_hypotheses": [{"cause": "renderer_or_network_path_unavailable"}],
+        "evidence": [{
+            "code": item["code"], "level": item["level"],
+            "category": item["category"], "ts": item["ts"],
+            "evidence": item["evidence"],
+        }],
+        "evidence_omitted": 0,
+    }
+    decision = decide_repairs([diagnosis], [item], healthy())[0]
+    assert decision["status"] == "deferred"
+    assert decision["reason"] == "finding_scope_ambiguous"
+    assert decision["scope"] == "unknown"
+
+
+def test_unhashable_category_is_handled_conservatively():
+    item = finding("health_renderer_http", category=["renderer"])
+    diagnosis = {
+        "diagnosis_id": "process:health_renderer_http",
+        "cause_hypotheses": [{"cause": "renderer_or_network_path_unavailable"}],
+        "evidence": [{
+            "code": item["code"], "level": item["level"],
+            "category": item["category"], "ts": item["ts"],
+            "evidence": item["evidence"],
+        }],
+        "evidence_omitted": 0,
+    }
+    decision = decide_repairs([diagnosis], [item], healthy())[0]
+    assert decision["status"] == "deferred"
+    assert decision["reason"] == "finding_evidence_invalid"
+    assert decision["scope"] == "unknown"
