@@ -145,7 +145,7 @@ def test_health_monitor_does_not_retain_stale_renderer_errors_while_paused(tmp_p
     assert snapshot["components"]["renderer_http"]["status"] == "unknown"
     assert snapshot["components"]["renderer_upnp"]["status"] == "unknown"
     assert snapshot["overall"] == "unknown"
-    assert sum(event["event"] == "health_change" for event in events) == 4
+    assert sum(event["event"] == "health_change" for event in events) == 6
 
 
 # ---- CLI ----
