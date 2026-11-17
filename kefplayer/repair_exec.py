@@ -181,3 +181,73 @@ def restart_media_server(
     budget.record_attempt(ACTION_R1, succeeded=True, trigger=trigger)
     emit("repair_result", action=ACTION_R1, result="success", port=port_before)
     return "success"
+
+
+# --------------------------------------------------------------------------
+# R3: UPnP-Dienst haengt (HTTP ok, UPnP error): frisches Renderer-Objekt
+# --------------------------------------------------------------------------
+ACTION_R3 = "R3_refresh_renderer"
+TRIGGER_R3 = "upnp_error_http_ok"
+
+
+def should_refresh_renderer(rounds: Any) -> tuple[bool, str]:
+    """Ausloeser fuer R3: in den letzten zwei Runden HTTP 'ok' und UPnP 'error'.
+
+    rounds: Liste von (http_status, upnp_status), neueste zuletzt.
+    """
+    if not isinstance(rounds, (list, tuple)) or len(rounds) < 2:
+        return False, "not_triggered"
+    last = list(rounds)[-2:]
+    if all(isinstance(r, (list, tuple)) and len(r) == 2 and r[0] == "ok" and r[1] == "error" for r in last):
+        return True, TRIGGER_R3
+    return False, "not_triggered"
+
+
+def refresh_renderer(
+    player: Any,
+    rounds: Any,
+    *,
+    budget: Any,
+    emit: Callable[..., None],
+    make_renderer: Callable[[str], Any],
+    verify: Callable[[Any], dict],
+) -> str:
+    """Liest die Gerätebeschreibung neu, prueft das neue Renderer-Objekt und tauscht es erst dann aus.
+
+    Der alte Renderer bleibt bis zur bestandenen Pruefung unveraendert (Rollback = nichts tauschen).
+    Ein anderes Geraet (UDN verschieden) wird nie uebernommen. Ein Versuch pro Aufruf.
+    Ergebnis: success | failed | blocked | not_triggered.
+    """
+    triggered, trigger = should_refresh_renderer(rounds)
+    if not triggered:
+        return "not_triggered"
+    if player.track_active.is_set():
+        emit("repair_blocked", action=ACTION_R3, reason="track_active")
+        return "blocked"
+    allowed, reason = budget.check(ACTION_R3)
+    if not allowed:
+        emit("repair_blocked", action=ACTION_R3, reason=reason)
+        return "blocked"
+
+    old_info = player.renderer.info
+    emit("repair_start", action=ACTION_R3, trigger=trigger)
+
+    def fail(why: str, **extra: Any) -> str:
+        budget.record_attempt(ACTION_R3, succeeded=False)
+        emit("repair_result", action=ACTION_R3, result="failed", reason=why, **extra)
+        return "failed"
+
+    try:
+        new = make_renderer(old_info.location)
+    except Exception as exc:  # noqa: BLE001
+        return fail("description_error", error=str(exc))
+    if getattr(new.info, "udn", None) != getattr(old_info, "udn", None):
+        return fail("udn_mismatch")
+    res = verify(new.info)
+    if not (isinstance(res, dict) and res.get("status") == "ok"):
+        return fail("not_verified")
+
+    outcome = player.request_renderer_swap(new)
+    budget.record_attempt(ACTION_R3, succeeded=True, trigger=trigger)
+    emit("repair_result", action=ACTION_R3, result="success", applied=outcome)
+    return "success"
