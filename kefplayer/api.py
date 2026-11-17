@@ -977,6 +977,12 @@ class StatusApp:
                 add("warn", "health_monitor_stalled", "Die Gesundheitsueberwachung liefert keine aktuellen Werte.",
                     "diagnostics", last_tick_age_s=h["last_tick_age_s"], errors=h["errors"],
                     last_error=scrub(h["last_error"] or "", self.details))
+            if h["errors"]:
+                add("warn", "health_monitor_errors",
+                    f"Die Gesundheitsueberwachung hat {h['errors']} interne Fehler registriert.",
+                    "diagnostics", count=h["errors"],
+                    last_error=scrub(h["last_error"] or "", self.details),
+                    monitor_state=h["state"])
         guard = [i for i, p in snap["proc"].items() if p.get("guard_gain_db")]
         if guard:
             add("info", "clipping_guard", f"Clipping-Schutz war bei {len(guard)} Titel(n) aktiv.", "dsp", count=len(guard))

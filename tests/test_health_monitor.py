@@ -422,6 +422,18 @@ def test_stalled_monitor_is_a_finding_but_stopped_is_not(env):
     codes = {x["code"] for x in body(c, "/api/v1/diagnostics")["data"]["findings"]}
     assert "health_monitor_stalled" not in codes
 
+def test_monitor_internal_errors_are_diagnostic_findings(env):
+    c, m = _collector(env)
+    m._errors = 2
+    m._last_error = "emit: ValueError: Empfaenger ausgefallen"
+    findings = body(c, "/api/v1/diagnostics")["data"]["findings"]
+    f = next(x for x in findings if x["code"] == "health_monitor_errors")
+    assert f["level"] == "warn"
+    assert f["category"] == "diagnostics"
+    assert f["evidence"]["count"] == 2
+    assert "ValueError" in f["evidence"]["last_error"]
+    assert f["evidence"]["monitor_state"] in ("running", "not_started")
+
 
 def test_health_change_events_in_logs_with_category_level_and_scrubbed_text(env):
     c, m = _collector(env, run=False)
