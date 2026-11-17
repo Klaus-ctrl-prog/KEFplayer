@@ -71,7 +71,7 @@ def _evidence_signature(item: dict[str, Any]) -> tuple:
     )
 
 
-def _groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def _groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]] | None]:
     """Reproduce D0 grouping so the original findings can be checked exactly."""
     grouped: dict[tuple[str, str | None], list[dict[str, Any]]] = defaultdict(list)
     for finding in findings:
@@ -100,7 +100,11 @@ def _groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             if code == "track_problem" and track_category is not None
             else f"{component}:{code}"
         )
-        result[diagnosis_id] = items
+        if diagnosis_id in result:
+            # Kollision: nie still ueberschreiben; Gruppe als mehrdeutig markieren.
+            result[diagnosis_id] = None
+        else:
+            result[diagnosis_id] = items
     return result
 
 
@@ -223,6 +227,11 @@ def decide_repairs(
                               "finding_count": 0})
             continue
 
+        if isinstance(diagnosis_id, str) and diagnosis_id in grouped and grouped[diagnosis_id] is None:
+            decisions.append({**base, "status": "deferred",
+                              "reason": "finding_group_collision", "scope": "unknown",
+                              "finding_count": 0})
+            continue
         matched = grouped.get(diagnosis_id) if isinstance(diagnosis_id, str) else None
         if not matched:
             decisions.append({**base, "status": "deferred",

@@ -6,6 +6,7 @@ It performs no I/O, does not infer hardware state, and never executes repairs.
 
 from __future__ import annotations
 
+import copy
 from collections import defaultdict
 from typing import Any
 
@@ -70,7 +71,7 @@ def diagnose(findings: list[dict[str, Any]], *, mode: str = "shadow") -> list[di
                 "level": item.get("level"),
                 "category": item.get("category"),
                 "ts": item.get("ts"),
-                "evidence": dict(item.get("evidence") or {}) if isinstance(item.get("evidence"), dict) else {},
+                "evidence": copy.deepcopy(item.get("evidence")) if isinstance(item.get("evidence"), dict) else {},
             })
         evidence = all_evidence[:MAX_EVIDENCE_PER_DIAGNOSIS]
         evidence_omitted = len(all_evidence) - len(evidence)
