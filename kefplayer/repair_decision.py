@@ -63,10 +63,10 @@ def _evidence_signature(item: dict[str, Any]) -> tuple:
     if not isinstance(evidence, dict):
         evidence = {}
     return (
-        item.get("code"),
-        item.get("level"),
-        item.get("category"),
-        item.get("ts"),
+        _freeze(item.get("code")),
+        _freeze(item.get("level")),
+        _freeze(item.get("category")),
+        _freeze(item.get("ts")),
         _freeze(evidence),
     )
 
