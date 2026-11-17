@@ -70,6 +70,7 @@ Die Diagnosen werden ausschließlich aus den bereits vorhandenen `findings` abge
 - `proposed_action` ist in D0 immer `null`. Es gibt keinen Reparaturcode.
 - `confidence` ist `low`, `medium` oder `unknown`; `high` wird in D0 nicht vergeben.
 - `evidence` enthält bis zu 25 zugehörige vorhandene Befunde einschließlich Kategorie, Zeitstempel und Evidenzdaten. Weitere Befunde werden nicht dupliziert; ihre Anzahl steht in `evidence_omitted`. Die Hypothesenregeln werten weiterhin alle Befunde aus, nicht nur die angezeigten 25.
+- Befunde aus Wiedergabeereignissen tragen `evidence.queue_started_at` als Sitzungsbezug. `track_problem`-Befunde stammen aus den Ergebnissen der aktuellen Warteschlange; Retry-, Stop- und Cache-Cleanup-Zähler für Diagnosen werden bei `queue_start` zurückgesetzt. Die bisherigen prozessweiten Summenzähler bleiben intern getrennt erhalten. Wiederholte API-Abfragen desselben Snapshots erzeugen keine neuen Ereignisse.
 - `verification` ist `not_applicable_d0_no_action`, weil keine Aktion ausgeführt wird.
 
 Gleiche Befundcodes werden zunächst zusammengefasst. Bei `track_problem` führen unterschiedliche Fehlerklassen innerhalb dieser Gruppe bewusst zur Unterdrückung statt zu einer pauschalen Ursache. Unbekannte Befundcodes bleiben sichtbar, erhalten aber keine Hypothese. D0 ist damit eine Diagnose-/Beobachtungsschicht und keine Selbstreparatur.
