@@ -90,7 +90,10 @@ def _groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
 
     result: dict[str, list[dict[str, Any]]] = {}
     for (code, track_category), items in grouped.items():
-        components = {_CATEGORY_COMPONENTS.get(x.get("category"), "process") for x in items}
+        components = {
+            _CATEGORY_COMPONENTS.get(category, "process") if isinstance(category, str) else "process"
+            for category in (item.get("category") for item in items)
+        }
         component = next(iter(components)) if len(components) == 1 else "playback"
         diagnosis_id = (
             f"{component}:{code}:{track_category}"
@@ -122,7 +125,10 @@ def _correlate_evidence(
     if expected != observed:
         return None, "finding_evidence_mismatch"
 
-    scopes = {item.get("scope") for item in matched}
+    raw_scopes = [item.get("scope") for item in matched]
+    if any(not isinstance(scope, str) for scope in raw_scopes):
+        return None, "finding_scope_ambiguous"
+    scopes = set(raw_scopes)
     if len(scopes) != 1 or not scopes <= {"queue", "process"}:
         return None, "finding_scope_ambiguous"
     return next(iter(scopes)), None
