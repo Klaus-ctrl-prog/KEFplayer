@@ -91,10 +91,12 @@ def test_busy_pauses_renderer_checks_but_not_local_checks(env, monkeypatch):
     assert env[0].actions == []
     snap = m.snapshot()
     assert snap["renderer_checks_paused"] is True
-    assert sorted(snap["components"]) == ["cache", "media_server"]
+    assert sorted(snap["components"]) == ["cache", "media_server", "renderer_http", "renderer_upnp"]
+    assert snap["components"]["renderer_http"]["status"] == "unknown"
+    assert snap["components"]["renderer_upnp"]["status"] == "unknown"
 
 
-def test_renderer_state_is_kept_while_busy(env):
+def test_renderer_state_becomes_unknown_while_busy(env):
     busy = {"v": False}
     m = _mon(env, busy=lambda: busy["v"])
     m.tick()
@@ -102,8 +104,10 @@ def test_renderer_state_is_kept_while_busy(env):
     env[4].clear()
     n = len(env[0].actions)
     m.tick()
-    assert len(env[0].actions) == n and env[4] == []
-    assert m.snapshot()["components"]["renderer_http"]["status"] == "ok"
+    assert len(env[0].actions) == n
+    assert [e["component"] for e in env[4]] == ["renderer_http", "renderer_upnp"]
+    assert m.snapshot()["components"]["renderer_http"]["status"] == "unknown"
+    assert m.snapshot()["components"]["renderer_upnp"]["status"] == "unknown"
 
 
 def test_no_monitor_requests_to_renderer_during_track(env, tmp_path, tone_factory, monkeypatch):
