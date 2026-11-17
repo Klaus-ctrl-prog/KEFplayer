@@ -161,6 +161,7 @@ class Player:
         self._pause = threading.Event()
         self._cache: Path | None = None
         self._own_cache = False
+        self._pending_renderer: upnp.Renderer | None = None  # D2: Austausch erst an der Titelgrenze
 
     # ---- Steuerung (aus anderen Threads aufrufbar) -------------------------
     def skip(self) -> None:
@@ -171,6 +172,29 @@ class Player:
 
     def toggle_pause(self) -> None:
         self._pause.set()
+
+    def request_renderer_swap(self, new: "upnp.Renderer") -> str:
+        """Ersetzt den Renderer. Im Leerlauf sofort ('applied'), sonst erst an der naechsten Titelgrenze ('pending').
+
+        Nie waehrend ein Titel laeuft: ein laufender Titel behaelt seinen Renderer.
+        """
+        with upnp.RENDERER_LOCK:
+            if self.track_active.is_set():
+                self._pending_renderer = new
+                return "pending"
+            self._set_renderer(new)
+            return "applied"
+
+    def _set_renderer(self, new: "upnp.Renderer") -> None:
+        old, self.renderer = self.renderer, new
+        self._emit("renderer_swapped", renderer=new.info.friendly_name,
+                   location_changed=old.info.location != new.info.location)
+
+    def _apply_pending_renderer(self) -> None:
+        with upnp.RENDERER_LOCK:
+            new, self._pending_renderer = self._pending_renderer, None
+            if new is not None:
+                self._set_renderer(new)
 
     def _call(self, action: str, fn, *args, attempts: int | None = None):
         """Renderer-Aufruf mit begrenzter Wiederholung (Backoff 1x, 2x, 4x ...) nur bei Timeout/Nichterreichbarkeit.
@@ -239,6 +263,7 @@ class Player:
                 for i, tr in enumerate(tracks):
                     if self._stop.is_set():
                         break
+                    self._apply_pending_renderer()  # D2: Renderer-Austausch nur zwischen Titeln
                     submit(i + 1)  # naechsten Titel waehrend der Wiedergabe vorbereiten
                     try:
                         prep = futs[i].result()
@@ -256,6 +281,7 @@ class Player:
         finally:
             with upnp.RENDERER_LOCK:
                 self.track_active.clear()
+            self._apply_pending_renderer()
             try:
                 self._emit("queue_end", played=len(results), reasons=[r.get("end_reason") for r in results])
             finally:
