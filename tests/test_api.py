@@ -437,3 +437,18 @@ def test_media_server_bind_address_is_redacted_when_it_is_a_lan_ip():
     c2.attach(server=FakeServer())  # Standard 0.0.0.0 verraet nichts
     md = json.loads(api.respond(c2, "/api/v1/renderer")[1])["data"]["media_server"]
     assert md["bind"] == "0.0.0.0" and md["advertise_host"] == "redacted"
+
+
+def test_diagnostics_includes_shadow_repair_decisions_without_actions():
+    c = attached()
+    feed(c, ev("queue_start", tracks=["a.flac"], profile={"name": "p"}, profile_neutral=False,
+               renderer="r", poll_s=0.5),
+         ev("sink_unavailable", error="timeout"))
+    data = body(c, "/api/v1/diagnostics")["data"]
+
+    assert "diagnoses" in data
+    assert "repair_decisions" in data
+    assert len(data["repair_decisions"]) == len(data["diagnoses"])
+    assert all(item["simulated"] is True for item in data["repair_decisions"])
+    assert all(item["repair_executed"] is False for item in data["repair_decisions"])
+    assert all(item["status"] in {"eligible", "deferred", "suppressed"} for item in data["repair_decisions"])
