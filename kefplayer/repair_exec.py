@@ -76,3 +76,108 @@ def restart_monitor(
         pass
     emit("repair_result", action=ACTION_R5, result="failed", reason="not_verified")
     return old, "failed"
+
+
+# --------------------------------------------------------------------------
+# R1: Medienserver am selben Port neu starten
+# --------------------------------------------------------------------------
+import threading  # noqa: E402
+
+ACTION_R1 = "R1_restart_media_server"
+TRIGGER_R1 = "media_server_error"
+
+
+def should_restart_server(statuses: Any) -> tuple[bool, str]:
+    """Ausloeser fuer R1: die letzten zwei Gesundheitsrunden 'media_server' waren 'error'."""
+    if not isinstance(statuses, (list, tuple)) or len(statuses) < 2:
+        return False, "not_triggered"
+    if all(s == "error" for s in list(statuses)[-2:]):
+        return True, TRIGGER_R1
+    return False, "not_triggered"
+
+
+def _stop_with_timeout(server: Any, timeout_s: float) -> bool:
+    """server.stop() in einem Hilfsthread. False, wenn es nicht rechtzeitig zurueckkehrt."""
+    err: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            server.stop()
+        except Exception as exc:  # noqa: BLE001
+            err.append(exc)
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    return not t.is_alive()
+
+
+def restart_media_server(
+    server: Any,
+    statuses: Any,
+    *,
+    busy: Callable[[], bool],
+    budget: Any,
+    emit: Callable[..., None],
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+    verify: Callable[[Any], dict],
+    stop_timeout_s: float = 5.0,
+    verify_timeout_s: float = 3.0,
+) -> str:
+    """Startet den Medienserver an demselben Port neu. Ergebnis: success | failed | blocked | not_triggered.
+
+    Nur bei festem Port (requested_port != 0): sonst aendern sich bereits ausgegebene URLs.
+    Nie waehrend eines laufenden Titels. Bei Fehlschlag bleibt der Server gegebenenfalls gestoppt;
+    ein sicherer Zustand ist Sache des Aufrufers. Ein Versuch pro Aufruf.
+    """
+    triggered, trigger = should_restart_server(statuses)
+    if not triggered:
+        return "not_triggered"
+
+    if busy():
+        emit("repair_blocked", action=ACTION_R1, reason="track_active")
+        return "blocked"
+    if not getattr(server, "requested_port", 0):
+        emit("repair_blocked", action=ACTION_R1, reason="dynamic_port")
+        return "blocked"
+    allowed, reason = budget.check(ACTION_R1)
+    if not allowed:
+        emit("repair_blocked", action=ACTION_R1, reason=reason)
+        return "blocked"
+
+    port_before = server.port
+    entries_before = set(server.entries)
+    emit("repair_start", action=ACTION_R1, trigger=trigger, port=port_before, entries=len(entries_before))
+
+    def fail(why: str, **extra: Any) -> str:
+        budget.record_attempt(ACTION_R1, succeeded=False)
+        emit("repair_result", action=ACTION_R1, result="failed", reason=why, **extra)
+        return "failed"
+
+    if not _stop_with_timeout(server, stop_timeout_s):
+        return fail("stop_timeout")
+    try:
+        server.start()
+    except Exception as exc:  # noqa: BLE001
+        return fail("start_error", error=str(exc))
+
+    deadline = clock() + verify_timeout_s
+    verified = False
+    while True:
+        res = verify(server)
+        if (isinstance(res, dict) and res.get("status") == "ok"
+                and server.port == port_before and set(server.entries) == entries_before):
+            verified = True
+            break
+        if clock() >= deadline:
+            break
+        sleep(0.05)
+
+    if not verified:
+        _stop_with_timeout(server, stop_timeout_s)
+        return fail("not_verified")
+
+    budget.record_attempt(ACTION_R1, succeeded=True, trigger=trigger)
+    emit("repair_result", action=ACTION_R1, result="success", port=port_before)
+    return "success"
