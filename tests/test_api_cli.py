@@ -92,15 +92,22 @@ def test_no_api_never_imports_the_module_and_opens_no_port(monkeypatch, tone_fac
     monkeypatch.delattr(kefplayer, "api", raising=False)
     monkeypatch.setitem(sys.modules, "kefplayer.api", None)  # jeder Importversuch scheitert mit ImportError
     a = tone_factory("a", seconds=2.0, fs=8000)
-    port = free_port()
+    # Port selbst gebunden halten (ohne listen): Verbindungen werden abgelehnt, und kein
+    # anderer Prozess/Test kann ihn zwischen free_port() und der Pruefung belegen.
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    port = holder.getsockname()[1]
     result, probes = {}, []
-    with MockRenderer(speedup=1.0) as mock:
-        t = threading.Thread(target=lambda: result.update(rc=cli.main(
-            play_args(tmp_path, mock, a, extra=["--no-api", "--api-port", str(port)]))))
-        t.start()
-        assert wait_for(lambda: mock.state == "PLAYING", 10)
-        probes.append(refused(port))
-        t.join(30)
+    try:
+        with MockRenderer(speedup=1.0) as mock:
+            t = threading.Thread(target=lambda: result.update(rc=cli.main(
+                play_args(tmp_path, mock, a, extra=["--no-api", "--api-port", str(port)]))))
+            t.start()
+            assert wait_for(lambda: mock.state == "PLAYING", 10)
+            probes.append(refused(port))
+            t.join(30)
+    finally:
+        holder.close()
     out = capsys.readouterr().out
     assert result["rc"] == 0 and probes == [True]
     assert "Status-API: aus (--no-api)" in out and "http://127.0.0.1" not in out
