@@ -193,14 +193,14 @@ def test_track_problem_unknown_category_is_separately_suppressed():
     assert all(x["proposed_action"] is None for x in results)
 
 
-def test_track_problem_mixed_categories_are_suppressed_independent_of_order():
+def test_track_problem_mixed_categories_are_diagnosed_independent_of_order():
     items = [
         finding("track_problem", "audio", error_category="source_format"),
         finding("track_problem", "renderer", error_category="renderer_timeout"),
     ]
 
-    forward = diagnose(items)[0]
-    reverse = diagnose(list(reversed(items)))[0]
+    forward = diagnose(items)
+    reverse = diagnose(list(reversed(items)))
 
     assert len(forward) == len(reverse) == 2
     assert {x["diagnosis_id"] for x in forward} == {x["diagnosis_id"] for x in reverse}
