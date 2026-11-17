@@ -954,10 +954,12 @@ class StatusApp:
 
         def add(level, code, msg, category, ts=None, **ev):
             # ts: Zeitpunkt des zugrunde liegenden Ereignisses, wenn bekannt; sonst Zeitpunkt der Auswertung
-            if code in {"track_problem", "ended_early", "mime_not_in_sink", "sink_unavailable",
-                        "stop_failed", "cleanup_failed", "renderer_retries"} and snap.get("queue") is not None:
+            queue_scoped = {"track_problem", "ended_early", "mime_not_in_sink", "sink_unavailable",
+                            "stop_failed", "cleanup_failed", "renderer_retries", "clipping_guard"}
+            scope = "queue" if code in queue_scoped and snap.get("queue") is not None else "process"
+            if scope == "queue":
                 ev.setdefault("queue_started_at", snap["queue"].get("started_at"))
-            out.append({"level": level, "code": code, "category": category, "message": msg,
+            out.append({"level": level, "code": code, "category": category, "scope": scope, "message": msg,
                         "ts": ts or snap["now_iso"], "ts_source": "event" if ts else "evaluation", "evidence": ev})
 
         for r in snap["results"]:
@@ -1048,6 +1050,7 @@ class StatusApp:
                 "processed_tracks": sum(1 for r in rs if r.get("processed")),
                 "findings": {"error": counts.get("error", 0), "warn": counts.get("warn", 0), "info": counts.get("info", 0)},
                 "findings_by_category": dict(collections.Counter(f["category"] for f in findings)),
+                "findings_by_scope": dict(collections.Counter(f["scope"] for f in findings)),
                 "profile": (ds.get("profile") or {}).get("name"),
                 "renderer_model": ((rn.get("identity") or {}).get("model_name")),
             },
