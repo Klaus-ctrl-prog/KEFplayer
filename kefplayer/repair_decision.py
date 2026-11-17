@@ -119,6 +119,8 @@ def _correlate_evidence(
         return None, "finding_evidence_mismatch"
     if any(not isinstance(item, dict) for item in d0_evidence):
         return None, "finding_evidence_invalid"
+    if any(not isinstance(item.get("category"), str) for item in matched):
+        return None, "finding_evidence_invalid"
 
     expected = Counter(_evidence_signature(item) for item in matched)
     observed = Counter(_evidence_signature(item) for item in d0_evidence)
