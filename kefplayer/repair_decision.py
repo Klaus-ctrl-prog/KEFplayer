@@ -1,20 +1,78 @@
 """D1 shadow-only repair decision policy.
 
-This module makes deterministic, observational decisions only. It never
-executes repairs, performs I/O, or mutates D0 findings/diagnoses.
+Decisions are observational only: this module performs no I/O, executes no
+repair, and does not mutate D0 findings or diagnoses.
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 _CATEGORY_COMPONENTS = {
-    "renderer": "renderer", "upnp": "upnp", "media_server": "media_server",
-    "audio": "audio", "dsp": "dsp", "cache": "cache", "diagnostics": "diagnostics",
+    "renderer": "renderer",
+    "upnp": "upnp",
+    "media_server": "media_server",
+    "audio": "audio",
+    "dsp": "dsp",
+    "cache": "cache",
+    "diagnostics": "diagnostics",
+}
+
+# Only causes with a direct relationship to a health check are gated by it.
+# A missing/unrelated component must not block an unrelated source/audio cause.
+_CAUSE_HEALTH_COMPONENTS = {
+    "renderer_or_network_path_unavailable": ("renderer_http",),
+    "renderer_upnp_control_path_unavailable": ("renderer_upnp",),
+    "renderer_command_failure_with_recorded_recovery": ("renderer_upnp",),
+    "renderer_command_retry_without_recorded_recovery": ("renderer_upnp",),
+    "renderer_stop_command_failed": ("renderer_upnp",),
+    "renderer_sink_capability_query_failed": ("renderer_upnp",),
+    "local_media_server_unavailable_or_port_conflict": ("media_server",),
+    "cache_write_or_storage_capacity_problem": ("cache",),
+    "cache_write_or_storage_problem": ("cache",),
+}
+
+# D0 deliberately uses one broad delivery-path hypothesis for several error
+# categories. Resolve the corresponding health component from the original
+# error_category rather than requiring unrelated renderer checks.
+_DELIVERY_ERROR_COMPONENT = {
+    "renderer_timeout": "renderer_http",
+    "renderer_unreachable": "renderer_http",
+    "renderer_fetched_no_play": "renderer_http",
+    "playback_timeout": "renderer_http",
+    "renderer_soap_fault": "renderer_upnp",
+    "renderer_http_error": "renderer_upnp",
+    "renderer_bad_response": "renderer_upnp",
+    "renderer_never_fetched": "media_server",
 }
 
 
+def _freeze(value: Any) -> tuple:
+    """Create a deterministic, type-preserving representation of JSON-like evidence."""
+    if isinstance(value, dict):
+        return ("dict", tuple(sorted((str(k), _freeze(v)) for k, v in value.items())))
+    if isinstance(value, (list, tuple)):
+        return ("list", tuple(_freeze(v) for v in value))
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return (type(value).__name__, value)
+    return (type(value).__name__, repr(value))
+
+
+def _evidence_signature(item: dict[str, Any]) -> tuple:
+    evidence = item.get("evidence")
+    if not isinstance(evidence, dict):
+        evidence = {}
+    return (
+        item.get("code"),
+        item.get("level"),
+        item.get("category"),
+        item.get("ts"),
+        _freeze(evidence),
+    )
+
+
 def _groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Reproduce D0 grouping so the original findings can be checked exactly."""
     grouped: dict[tuple[str, str | None], list[dict[str, Any]]] = defaultdict(list)
     for finding in findings:
         if not isinstance(finding, dict):
@@ -22,13 +80,13 @@ def _groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         code = finding.get("code")
         if not isinstance(code, str) or not code:
             continue
-        category = None
+        track_category = None
         if code == "track_problem":
             ev = finding.get("evidence")
             raw = ev.get("error_category") if isinstance(ev, dict) else None
             if isinstance(raw, str) and raw:
-                category = raw
-        grouped[(code, category)].append(finding)
+                track_category = raw
+        grouped[(code, track_category)].append(finding)
 
     result: dict[str, list[dict[str, Any]]] = {}
     for (code, track_category), items in grouped.items():
@@ -43,7 +101,66 @@ def _groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
-def _health_reason(causes: list[str], health: dict[str, Any] | None) -> str | None:
+def _correlate_evidence(
+    diagnosis: dict[str, Any], matched: list[dict[str, Any]]
+) -> tuple[str | None, str | None]:
+    """Verify every original finding is represented by the complete D0 evidence."""
+    omitted = diagnosis.get("evidence_omitted")
+    if not isinstance(omitted, int) or isinstance(omitted, bool) or omitted < 0:
+        return None, "finding_evidence_invalid"
+    if omitted:
+        return None, "finding_evidence_truncated"
+
+    d0_evidence = diagnosis.get("evidence")
+    if not isinstance(d0_evidence, list) or len(d0_evidence) != len(matched):
+        return None, "finding_evidence_mismatch"
+    if any(not isinstance(item, dict) for item in d0_evidence):
+        return None, "finding_evidence_invalid"
+
+    expected = Counter(_evidence_signature(item) for item in matched)
+    observed = Counter(_evidence_signature(item) for item in d0_evidence)
+    if expected != observed:
+        return None, "finding_evidence_mismatch"
+
+    scopes = {item.get("scope") for item in matched}
+    if len(scopes) != 1 or not scopes <= {"queue", "process"}:
+        return None, "finding_scope_ambiguous"
+    return next(iter(scopes)), None
+
+
+def _required_health_components(
+    causes: list[str], diagnosis: dict[str, Any]
+) -> tuple[set[str], str | None]:
+    required: set[str] = set()
+    for cause in causes:
+        required.update(_CAUSE_HEALTH_COMPONENTS.get(cause, ()))
+        if cause == "renderer_or_delivery_path_playback_failure":
+            evidence = diagnosis.get("evidence")
+            categories = set()
+            if isinstance(evidence, list):
+                for item in evidence:
+                    if isinstance(item, dict) and isinstance(item.get("evidence"), dict):
+                        category = item["evidence"].get("error_category")
+                        if isinstance(category, str) and category:
+                            categories.add(category)
+            if not categories:
+                return set(), "health_mapping_unresolved"
+            mapped = {_DELIVERY_ERROR_COMPONENT.get(category) for category in categories}
+            if None in mapped:
+                return set(), "health_mapping_unresolved"
+            required.update(mapped)
+    return required, None
+
+
+def _health_reason(
+    causes: list[str], diagnosis: dict[str, Any], health: dict[str, Any] | None
+) -> str | None:
+    required, mapping_error = _required_health_components(causes, diagnosis)
+    if mapping_error:
+        return mapping_error
+    if not required:
+        return None
+
     if not isinstance(health, dict) or health.get("enabled") is not True:
         return "health_unavailable"
     monitor = health.get("monitor")
@@ -52,37 +169,19 @@ def _health_reason(causes: list[str], health: dict[str, Any] | None) -> str | No
     if monitor.get("state") != "running":
         return "health_monitor_not_running"
 
-    renderer_causes = {
-        "renderer_or_network_path_unavailable", "renderer_upnp_control_path_unavailable",
-        "renderer_command_failure_with_recorded_recovery",
-        "renderer_command_retry_without_recorded_recovery", "renderer_stop_command_failed",
-        "renderer_sink_capability_query_failed", "renderer_or_delivery_path_playback_failure",
-    }
-    if renderer_causes.intersection(causes) and monitor.get("renderer_checks_paused") is True:
+    renderer_components = {"renderer_http", "renderer_upnp"}
+    if required & renderer_components and monitor.get("renderer_checks_paused") is True:
         return "renderer_health_checks_paused"
 
-    required = {
-        "renderer_or_network_path_unavailable": ("renderer_http",),
-        "renderer_upnp_control_path_unavailable": ("renderer_upnp",),
-        "renderer_command_failure_with_recorded_recovery": ("renderer_http", "renderer_upnp"),
-        "renderer_command_retry_without_recorded_recovery": ("renderer_http", "renderer_upnp"),
-        "renderer_stop_command_failed": ("renderer_upnp",),
-        "renderer_sink_capability_query_failed": ("renderer_upnp",),
-        "renderer_or_delivery_path_playback_failure": ("renderer_http", "renderer_upnp"),
-        "local_media_server_unavailable_or_port_conflict": ("media_server",),
-        "cache_write_or_storage_capacity_problem": ("cache",),
-        "cache_write_or_storage_problem": ("cache",),
-    }
     components = health.get("components")
     if not isinstance(components, dict):
         return "health_components_unknown"
-    for cause in causes:
-        for name in required.get(cause, ()):
-            item = components.get(name)
-            if not isinstance(item, dict) or item.get("status") in (None, "unknown"):
-                return "required_health_unknown"
-            if item.get("status") != "ok":
-                return "required_health_not_ok"
+    for name in sorted(required):
+        item = components.get(name)
+        if not isinstance(item, dict) or item.get("status") in (None, "unknown"):
+            return "required_health_unknown"
+        if item.get("status") != "ok":
+            return "required_health_not_ok"
     return None
 
 
@@ -91,7 +190,7 @@ def decide_repairs(
     findings: list[dict[str, Any]],
     health: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    """Return D1 shadow decisions; no current cause is repair-eligible."""
+    """Return deterministic D1 shadow decisions; no cause is repair-eligible yet."""
     if not isinstance(diagnoses, list):
         raise TypeError("diagnoses must be a list")
     if not isinstance(findings, list):
@@ -123,18 +222,18 @@ def decide_repairs(
                               "finding_count": 0})
             continue
 
-        scopes = {x.get("scope") for x in matched}
-        if len(scopes) != 1 or not scopes <= {"queue", "process"}:
+        scope, correlation_error = _correlate_evidence(diagnosis, matched)
+        if correlation_error:
             decisions.append({**base, "status": "deferred",
-                              "reason": "finding_scope_ambiguous", "scope": "unknown",
+                              "reason": correlation_error, "scope": "unknown",
                               "finding_count": len(matched)})
             continue
 
         decisions.append({
             **base,
             "status": "deferred",
-            "reason": _health_reason(causes, health) or "no_repair_action_approved_in_d1",
-            "scope": next(iter(scopes)),
+            "reason": _health_reason(causes, diagnosis, health) or "no_repair_action_approved_in_d1",
+            "scope": scope,
             "finding_count": len(matched),
         })
     return decisions
