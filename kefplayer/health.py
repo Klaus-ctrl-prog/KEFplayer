@@ -178,6 +178,15 @@ class HealthMonitor:
                     results += [http, up]
             finally:
                 renderer_lock.release()
+        if paused:
+            # Ein alter Renderer-Fehler darf waehrend der bewusst ausgesetzten Pruefung
+            # nicht weiter als aktueller Zustand erscheinen.
+            results += [
+                _result("renderer_http", "unknown", "renderer",
+                        "Renderer-Pruefung ausgesetzt; letzter HTTP-Status ist nicht aktuell."),
+                _result("renderer_upnp", "unknown", "upnp",
+                        "Renderer-Pruefung ausgesetzt; letzter UPnP-Status ist nicht aktuell."),
+            ]
         results.append(check_media_server(self.server))
         results.append(check_cache(self.cache_dir))
         for r in results:
