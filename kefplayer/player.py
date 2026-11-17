@@ -281,6 +281,7 @@ class Player:
             report = audio.process_file(
                 track.path, self._cache, self.profile,
                 fmt=self.fmt, bits=self.bits, dither=self.dither, stem=f"{i:03d}_{_safe(track.path.stem)}",
+                classify_errors=True,
             )
             path = Path(report["dst"])
             self._emit("track_processed", index=i, **{k: report[k] for k in ("src", "preamp_db", "peak_in_dbfs", "peak_out_dbfs", "guard_gain_db", "warnings", "elapsed_s")})

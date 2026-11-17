@@ -113,6 +113,7 @@ def process_file(
     dither: bool = True,
     seed: int = 0,
     stem: str | None = None,
+    classify_errors: bool = False,
 ) -> dict:
     """Filtert eine Datei und schreibt sie nach dst_dir. Rueckgabe: Protokoll-Dict."""
     t0 = time.perf_counter()
@@ -122,16 +123,24 @@ def process_file(
     try:
         dst_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise AudioProcessError("cache_io", str(exc)) from exc
+        if classify_errors:
+            raise AudioProcessError("cache_io", str(exc)) from exc
+        raise
 
     try:
         data, fs, info = read_audio(src)
     except sf.LibsndfileError as exc:
-        raise AudioProcessError("source_format", str(exc)) from exc
+        if classify_errors:
+            raise AudioProcessError("source_format", str(exc)) from exc
+        raise
     except OSError as exc:
-        raise AudioProcessError("source_file_access", str(exc)) from exc
+        if classify_errors:
+            raise AudioProcessError("source_file_access", str(exc)) from exc
+        raise
     except Exception as exc:  # noqa: BLE001 - Fehler beim Lesen der Quelldatei
-        raise AudioProcessError("processing_error", str(exc)) from exc
+        if classify_errors:
+            raise AudioProcessError("processing_error", str(exc)) from exc
+        raise
 
     try:
         subtype = choose_output(info, fmt, bits)
@@ -140,7 +149,9 @@ def process_file(
         ceiling = None if (subtype == "FLOAT" or neutral) else 1.0 - 2.0 ** -(obits - 1)
         out, pinfo = dsp.apply_profile(data, fs, profile, ceiling=ceiling)
     except Exception as exc:  # noqa: BLE001 - Konfiguration oder Signalverarbeitung
-        raise AudioProcessError("processing_error", str(exc)) from exc
+        if classify_errors:
+            raise AudioProcessError("processing_error", str(exc)) from exc
+        raise
 
     # Dither nur bei 16 Bit und nur, wenn tatsaechlich neu quantisiert wird
     use_dither = dither and subtype == "PCM_16" and not (neutral and info.bits == 16)
@@ -149,9 +160,13 @@ def process_file(
         _write(dst, out, fs, subtype, fmt.upper(), use_dither, seed)
         out_info = probe(dst)
     except (OSError, sf.LibsndfileError) as exc:
-        raise AudioProcessError("cache_io", str(exc)) from exc
+        if classify_errors:
+            raise AudioProcessError("cache_io", str(exc)) from exc
+        raise
     except Exception as exc:  # noqa: BLE001 - unerwarteter Fehler beim Schreiben/Pruefen der Cache-Datei
-        raise AudioProcessError("processing_error", str(exc)) from exc
+        if classify_errors:
+            raise AudioProcessError("processing_error", str(exc)) from exc
+        raise
 
     return {
         "src": str(src),

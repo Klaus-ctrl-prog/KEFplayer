@@ -111,7 +111,7 @@ def test_process_file_classifies_source_read_oserror(monkeypatch, tmp_path):
 
     monkeypatch.setattr(audio, "read_audio", fail_read)
     with pytest.raises(audio.AudioProcessError) as err:
-        audio.process_file("source.flac", tmp_path / "cache", Profile())
+        audio.process_file("source.flac", tmp_path / "cache", Profile(), classify_errors=True)
     assert err.value.category == "source_file_access"
     assert isinstance(err.value.__cause__, OSError)
 
@@ -124,7 +124,7 @@ def test_process_file_classifies_cache_write_oserror(monkeypatch, tone_factory, 
 
     monkeypatch.setattr(audio, "_write", fail_write)
     with pytest.raises(audio.AudioProcessError) as err:
-        audio.process_file(src, tmp_path / "cache", Profile(filters=[dsp.Filter("peq", 1000, -1.0, 1.0)]))
+        audio.process_file(src, tmp_path / "cache", Profile(filters=[dsp.Filter("peq", 1000, -1.0, 1.0)]), classify_errors=True)
     assert err.value.category == "cache_io"
     assert isinstance(err.value.__cause__, OSError)
 
