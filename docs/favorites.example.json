@@ -1,0 +1,72 @@
+[
+  {
+    "name": "1LIVE",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "Pop/Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "candidate",
+    "verified_at": null,
+    "notes": "Startkandidat. Erwartet AAC 192 kbit/s (Angabe des Nutzers, NICHT belegt). Die Community-Liste ubuntuusers nennt fuer 1LIVE nur MP3 128 kbit/s; eine AAC-192-URL ist noch zu ermitteln und per Stream-Pruefung zu verifizieren."
+  },
+  {
+    "name": "WDR 2",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "Pop/Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "candidate",
+    "verified_at": null,
+    "notes": "Startkandidat. Erwartet AAC 192 kbit/s (Angabe des Nutzers, NICHT belegt). Regionale Varianten (Rheinland, Ruhrgebiet ...) sind getrennte Streams; Region waehlen. ubuntuusers nennt dort nur MP3 128 kbit/s."
+  },
+  {
+    "name": "hr3",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "Pop/Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "candidate",
+    "verified_at": null,
+    "notes": "Startkandidat. Erwartet adaptives AAC bis 192 kbit/s; hoechste Stufe muss per URL/Variante erzwungen und verifiziert werden. ubuntuusers nennt fuer die 'high'-URLs (dispatcher.rndfnk.com) nur '128kbit MP3'; Region (Rhein-Main, Nordhessen ...) waehlen."
+  },
+  {
+    "name": "ROCK ANTENNE",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Nur aufnehmen, wenn tatsaechlich AAC >= 192 kbit/s (oder FLAC) verfuegbar ist."
+  },
+  {
+    "name": "ANTENNE BAYERN Classic Rock",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "Classic Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Nur aufnehmen, wenn tatsaechlich AAC >= 192 kbit/s (oder FLAC) verfuegbar ist."
+  },
+  {
+    "name": "MDR JUMP",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "Pop/Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Nur aufnehmen, wenn tatsaechlich AAC >= 192 kbit/s (oder FLAC) verfuegbar ist."
+  },
+  {
+    "name": "80s80s",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "80er Pop/Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Nur aufnehmen, wenn tatsaechlich AAC >= 192 kbit/s (oder FLAC) verfuegbar ist."
+  }
+]
