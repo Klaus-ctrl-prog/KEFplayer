@@ -74,3 +74,15 @@ def test_input_is_not_mutated():
     diagnose(source)
 
     assert repr(source) == before
+
+
+
+def test_track_problem_classifies_cache_io_without_proposing_a_repair():
+    result = diagnose([
+        finding("track_problem", "cache", error_category="cache_io")
+    ])[0]
+
+    assert result["decision"] == "shadow_propose"
+    assert result["cause_hypotheses"][0]["cause"] == "cache_write_or_storage_problem"
+    assert result["confidence"] == "medium"
+    assert result["proposed_action"] is None
