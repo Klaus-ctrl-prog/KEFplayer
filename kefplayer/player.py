@@ -50,12 +50,14 @@ TRANSIENT_CATEGORIES = ("renderer_timeout", "renderer_unreachable")
 
 def classify_prepare_error(exc: BaseException) -> str:
     """Fehlerkategorie fuer das Vorbereiten einer Datei (Lesen, Filtern, Schreiben)."""
+    if isinstance(exc, audio.AudioProcessError):
+        return exc.category
     if isinstance(exc, (FileNotFoundError, PermissionError)):
         return "source_file_access"
     if isinstance(exc, sf.LibsndfileError):
         return "source_format"
     if isinstance(exc, OSError):
-        return "cache_io"
+        return "file_io"
     return "processing_error"
 
 

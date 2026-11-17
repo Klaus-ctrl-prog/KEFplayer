@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from kefplayer import upnp
+from kefplayer import audio, upnp
 from kefplayer.dsp import ChannelSpec, Filter, Profile
 from kefplayer.mediaserver import MediaServer
 from kefplayer.player import Player
@@ -325,7 +325,8 @@ def test_classify_error_categories():
     assert classify_error(ValueError("x")) == "unknown"
     assert classify_prepare_error(FileNotFoundError()) == "source_file_access"
     assert classify_prepare_error(PermissionError()) == "source_file_access"
-    assert classify_prepare_error(OSError("disk")) == "cache_io"
+    assert classify_prepare_error(OSError("disk")) == "file_io"
+    assert classify_prepare_error(audio.AudioProcessError("cache_io", "disk")) == "cache_io"
     assert classify_prepare_error(ValueError("x")) == "processing_error"
 
 

@@ -67,7 +67,7 @@ _ERROR_CATEGORY = {
     "renderer_timeout": "renderer", "renderer_unreachable": "renderer", "renderer_fetched_no_play": "renderer",
     "playback_timeout": "renderer", "renderer_soap_fault": "upnp", "renderer_http_error": "upnp",
     "renderer_bad_response": "upnp", "renderer_never_fetched": "media_server", "source_file_access": "audio",
-    "source_format": "audio", "processing_error": "dsp", "cache_io": "cache",
+    "source_format": "audio", "processing_error": "dsp", "cache_io": "cache", "file_io": "audio",
 }
 _LEVELS = {"info": 0, "warn": 1, "error": 2}
 _COMPONENT_CATEGORY = {"renderer_http": "renderer", "renderer_upnp": "upnp", "media_server": "media_server", "cache": "cache"}
