@@ -29,7 +29,7 @@ Im Projektordner (dort liegt `pyproject.toml`):
 | `kefplayer probe [--renderer IP-oder-URL]` | Gerät, Dienste, Transportstatus und die vom Gerät gemeldeten Formate (Eigenangabe, kein Wiedergabetest) |
 | `kefplayer response --profile P.json --fs 44100` | Rechnerischen Frequenzgang je Kanal und Preamp anzeigen, ohne etwas abzuspielen |
 | `kefplayer process DATEI... --out ORDNER [--profile P.json]` | Dateien filtern und speichern |
-| `kefplayer health [--renderer IP-oder-URL] [--json]` | Einmalige Gesundheitsprüfung: Renderer (HTTP, UPnP), Port des Medienservers, Cache. Exitcode 1 nur bei `error` (Entwicklungsstand nach 0.3.0) |
+| `kefplayer health [--renderer IP-oder-URL] [--json]` | Einmalige Gesundheitsprüfung: Renderer (HTTP, UPnP), Medienserver-Port (ohne laufenden Server muss er frei sein), Cache. Exitcode 1 nur bei `error`; `warn`/`unknown` liefern 0 (Entwicklungsstand nach 0.3.0) |
 | `kefplayer play DATEI-ODER-ORDNER... [--profile P.json]` | Abspielen auf dem Renderer, Protokoll in `kefplayer_log.jsonl`; lokale, lesende Status-API auf `127.0.0.1:8766` (abschaltbar mit `--no-api`) |
 
 Während `play` im Terminal: `n` = nächster Titel, `p` = Pause/Weiter, `q` = Ende (jeweils mit Enter).
