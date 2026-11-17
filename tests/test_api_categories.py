@@ -119,7 +119,13 @@ def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
     data = body(c, "/api/v1/diagnostics")["data"]
 
     assert data["diagnoses"]
-    assert len(data["findings"]) == len(body(c, "/api/v1/diagnostics")["data"]["findings"])
+    app = api.StatusApp(c)
+    expected_findings = app.findings(c.snapshot(), app._live(True))
+    stable = lambda items: [
+        {key: value for key, value in item.items() if key not in ("ts", "ts_source")}
+        for item in items
+    ]
+    assert stable(data["findings"]) == stable(expected_findings)
     track = [d for d in data["diagnoses"] if d["symptom"] == "track_problem"]
     assert len(track) == 1
     assert track[0]["decision"] == "suppress"
