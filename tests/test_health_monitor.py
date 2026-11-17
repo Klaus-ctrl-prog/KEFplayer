@@ -193,7 +193,9 @@ def test_health_skips_renderer_when_shared_lock_is_held(env):
         m.tick()
         snap = m.snapshot()
         assert snap["renderer_checks_paused"] is True
-        assert sorted(snap["components"]) == ["cache", "media_server"]
+        assert sorted(snap["components"]) == ["cache", "media_server", "renderer_http", "renderer_upnp"]
+        assert snap["components"]["renderer_http"]["status"] == "unknown"
+        assert snap["components"]["renderer_upnp"]["status"] == "unknown"
     finally:
         release.set()
         holder.join(2)
