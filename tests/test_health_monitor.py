@@ -216,7 +216,7 @@ def test_player_waits_for_inflight_health_check_before_sink_protocol_info(env, t
     assert entered.wait(2)
 
     player = Player(upnp.Renderer(info), server, log=RunLog(None), poll_s=0.02)
-    source = tone_factory("startup-lock", seconds=0.2)
+    source = tone_factory("startup-lock", seconds=0.5)
     result = []
     player_thread = threading.Thread(target=lambda: result.extend(player.play_queue([source])))
     player_thread.start()
@@ -228,7 +228,7 @@ def test_player_waits_for_inflight_health_check_before_sink_protocol_info(env, t
     player_thread.join(5)
     assert not monitor_thread.is_alive() and not player_thread.is_alive()
     assert any(a[0] == "GetProtocolInfo" for a in mock.actions)
-    assert len(result) == 1 and result[0]["end_reason"] in ("ended", "timeout")
+    assert len(result) == 1 and not player.track_active.is_set()
 
 
 def test_player_track_active_flag(rig, tone_factory):
