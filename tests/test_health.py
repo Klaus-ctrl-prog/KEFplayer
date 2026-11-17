@@ -116,7 +116,7 @@ def test_overall_picks_worst():
 
 def test_health_monitor_does_not_retain_stale_renderer_errors_while_paused(tmp_path, monkeypatch):
     events = []
-    monitor = health.HealthMonitor(events.append, cache_dir=tmp_path, busy=lambda: True)
+    monitor = health.HealthMonitor(lambda event, **kw: events.append({"event": event, **kw}), cache_dir=tmp_path, busy=lambda: True)
 
     for component, category in (("renderer_http", "renderer"), ("renderer_upnp", "upnp")):
         monitor._update({
