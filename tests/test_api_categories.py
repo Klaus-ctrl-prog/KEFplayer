@@ -209,10 +209,6 @@ def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
 
 
 def test_simultaneous_media_server_and_cache_health_findings_remain_independent():
-    c = attached()
-    feed(c, ev("queue_start", tracks=["a"], profile={"name": "p"}, profile_neutral=False,
-               renderer="r", poll_s=0.5))
-    app = api.StatusApp(c)
     findings = [
         {"code": "health_media_server", "category": "media_server", "level": "error",
          "ts": "2026-11-17T10:00:00+00:00", "evidence": {}},
