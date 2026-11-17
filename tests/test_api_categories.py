@@ -114,6 +114,46 @@ def test_unknown_event_gets_default_category():
 
 
 
+def test_live_probe_error_is_scrubbed_in_findings():
+    c = attached()
+    app = api.StatusApp(c)
+    live = {
+        "enabled": True,
+        "ok": False,
+        "error": "Connection failed to 192.168.1.77 at C:\\\\Users\\\\User\\\\private.flac "
+                 "https://media.local/audio.flac?token=secret",
+    }
+
+    finding = next(x for x in app.findings(c.snapshot(), live) if x["code"] == "live_probe_failed")
+
+    assert "192.168.1.77" not in finding["evidence"]["error"]
+    assert "C:\\\\Users" not in finding["evidence"]["error"]
+    assert "token=secret" not in finding["evidence"]["error"]
+    assert "<ip>" in finding["evidence"]["error"]
+    assert "<url>" in finding["evidence"]["error"]
+
+
+def test_many_track_errors_keep_findings_and_bound_repeated_diagnosis_evidence():
+    c = attached()
+    feed(c, ev("queue_start", tracks=[f"{i}.flac" for i in range(400)], profile={"name": "p"},
+               profile_neutral=False, renderer="r", poll_s=0.5))
+    for i in range(400):
+        feed(c, ev("track_end", index=i, path=f"{i}.flac", end_reason="error", error="renderer timeout",
+                   error_category="renderer_timeout", requests=[]))
+
+    status, raw = api.respond(c, "/api/v1/diagnostics", "events=0")
+    assert status == 200
+    data = json.loads(raw)["data"]
+    track_findings = [x for x in data["findings"] if x["code"] == "track_problem"]
+    track_diagnoses = [x for x in data["diagnoses"] if x["symptom"] == "track_problem"]
+
+    assert len(track_findings) == 400  # die Primaerbefunde bleiben vollstaendig erhalten
+    assert len(track_diagnoses) == 1
+    assert len(track_diagnoses[0]["evidence"]) == 25
+    assert track_diagnoses[0]["evidence_omitted"] == 375
+    assert len(raw) < api.MAX_RESPONSE_BYTES
+
+
 def test_diagnostics_exposes_shadow_diagnoses_without_changing_findings():
     c = _run_with_problems()
     data = body(c, "/api/v1/diagnostics")["data"]
