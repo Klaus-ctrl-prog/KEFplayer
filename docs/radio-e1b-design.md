@@ -4,6 +4,7 @@ Status: **Entwurf, kein Code.** Nichts ist an einer echten KEF Gen1 geprüft (fr
 
 ## 1. Entscheidungen (Nutzer, 18.11.2026)
 - **E-8:** ICY-Titelanzeige erst später (E3), nicht Teil von E1b.
+- **E-17:** Samplerate = Senderrate (kein unnötiges Resampling), Rückfall 48 kHz, `--radio-rate` überschreibt. Siehe Abschnitt 6.
 - **E-11:** Reconnect **standardmäßig an**, betrifft nur die Verbindung zum Sender, nie den Renderer; mit Versuchsbudget und Protokoll. Abschaltbar mit `--no-reconnect`.
 - **E-13:** ffmpeg **nicht** in der CI. CI testet mit Fake-Decodern; echte ffmpeg-Tests laufen nur lokal und werden sonst übersprungen.
 - **E-15 (entschieden):** Ausgabe mit **24 Bit**.
@@ -48,7 +49,7 @@ Neue Klasse **`StreamingProfile`** (in `dsp.py` oder eigenem Modul), die das vor
 - **Endlosstrom:** Die Länge ist unbekannt. Der WAV-Kopf wird mit **Größenfeldern 0xFFFFFFFF** geschrieben (**Annahme**, dass die Gen1 das als „unbekannte Länge“ liest; Alternative: sehr große Länge). Der Live-Handler von E1 sendet ohne Content-Length (kein Seek).
 - **Umwandlung Float → 24 Bit:** Runden auf ganze 24-Bit-Werte, Begrenzung bei ±Vollaussteuerung mit **Übersteuerungszähler**. Bei 24 Bit ist kein Dither vorgesehen (Quantisierungsrauschen weit unter hörbar; kein Messwert, Modellannahme).
 - **Bandbreite:** unkomprimiert, im LAN unkritisch (24 Bit × 2 Kanäle × Rate; bei 48 kHz rund 2,3 Mbit/s, aus der Formel gerechnet).
-- **Samplerate (offen, klein):** Vorschlag feste **48 kHz** (ffmpeg resampelt), konfigurierbar; die Filter werden für diese Rate entworfen. Ob die Gen1 die Rate als Endlosstrom akzeptiert, ist **ungeprüft**.
+- **Samplerate (E-17, entschieden 18.11.2026, 10:53: „best mögliche“, Auslegung):** keine unnötige Umrechnung. Der Decoder liefert die vom Qualitätscheck ermittelte Samplerate des Senders unverändert (bei AAC meist 44,1 oder 48 kHz). ffmpeg resampelt nur, wenn die Rate nicht ermittelbar oder nicht zulässig ist; Rückfall 48 kHz. Die Filter werden für die tatsächlich verwendete Rate entworfen. `--radio-rate` bleibt als manuelle Überschreibung. Welche Raten die Gen1 als Endlosstrom akzeptiert, ist **ungeprüft** (frühestens März 2027).
 - **Nicht vorgesehen:** FLAC-Ausgabe und ein zweiter ffmpeg-Prozess. Falls die Gen1 den WAV-Endlosstrom nicht annimmt, ist das nach dem Hardwaretest (März 2027) neu zu bewerten.
 
 ## 7. Ringpuffer, Unterlauf, Überlauf

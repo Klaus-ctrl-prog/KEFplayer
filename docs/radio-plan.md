@@ -89,7 +89,7 @@ Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen WAV-Strömen (24 Bit
 - **E-9** Toleranz der gemessenen Bitrate; **E-10** nur AAC-LC zulassen?
 - **E-11:** entschieden: Reconnect standardmäßig an (nur Upstream, abschaltbar mit `--no-reconnect`), nicht hinter `--enable-repair`.
 - **E-13:** entschieden: ffmpeg nicht in der CI (Fake-Decoder).
-- **E-15:** entschieden (18.11.2026, 10:33): Ausgabe mit 24 Bit. **E-16:** entschieden: ohne FLAC, WAV (PCM 24 Bit), kein Encoder-Prozess. Samplerate noch offen (Vorschlag 48 kHz, konfigurierbar). Siehe `docs/radio-e1b-design.md`.
+- **E-15:** entschieden (18.11.2026, 10:33): Ausgabe mit 24 Bit. **E-16:** entschieden: ohne FLAC, WAV (PCM 24 Bit), kein Encoder-Prozess. **E-17:** Samplerate = Senderrate ohne unnötiges Resampling (Rückfall 48 kHz, `--radio-rate` überschreibt). Siehe `docs/radio-e1b-design.md`.
 - Echte, geprüfte **AAC-≥192-/FLAC-URLs** der Startsender (liefert der Nutzer oder die Senderseite; nicht aus Community-Listen übernehmen).
 
 ## 10. Verweise
