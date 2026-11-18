@@ -197,3 +197,12 @@ def test_mediaserver_mit_echtem_decoder_prozess_fake():
     finally:
         pipe.stop()
         server.stop() if hasattr(server, "stop") else None
+
+
+def test_choose_rate_senderrate_rueckfall_override():
+    from kefplayer.radio_pipeline import choose_rate
+    assert choose_rate(44100) == 44100 and choose_rate(48000) == 48000 and choose_rate(96000) == 96000
+    assert choose_rate(None) == 48000
+    assert choose_rate(24000) == 48000   # HE-AAC-Kernrate: kein Abschneiden der Hoehen
+    assert choose_rate(8000) == 48000
+    assert choose_rate(44100, 96000) == 96000 and choose_rate(None, 44100) == 44100

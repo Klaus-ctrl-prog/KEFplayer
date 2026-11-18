@@ -85,6 +85,8 @@ def test_unreachable_upstream_gives_502_not_hang():
         url, token = s.register_stream(boom, "audio/aac", "x.aac")
         r, body, c = _get(url)
         assert r.status == 502
+        # Das Protokoll wird erst nach dem Senden der Antwort geschrieben: kurz warten statt Race
+        assert wait_for(lambda: s.requests_for(token), 3)
         assert s.requests_for(token)[-1]["status"] == 502
     finally:
         s.stop()

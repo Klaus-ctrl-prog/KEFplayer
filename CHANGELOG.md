@@ -18,12 +18,14 @@
 - **E1b Schritt 2** (`kefplayer/decoder.py`): ffmpeg-Wrapper mit absolutem Pfad (keine PATH-Suche), Version und SHA-256 (optionaler Pin), `shell=False`, Protokoll-Whitelist, ohne `-reconnect*`, stderr-Drain mit URL-Bereinigung, sanftes dann hartes Beenden. Getestet nur mit Fake-Decoder; kein echtes ffmpeg, noch nicht an Radio angebunden.
 - **E1b Schritt 3** (`kefplayer/wavstream.py`, `ringbuffer.py`, `radio_pipeline.py`): Decoder-PCM → `StreamingProfile` → WAV PCM 24 Bit (Kopf mit unbekannter Länge, Übersteuerungs- und Ungültig-Zähler, kein Dither) → Ringpuffer (Überlauf verwirft Ältestes, Unterlauf liefert Stille) → Quelle für den MediaServer. Noch ohne Reconnect und ohne CLI-Anbindung; nur Simulator/Fake-Decoder.
 - **E1b Schritt 4** (`kefplayer/radio_supervisor.py`, `radio_pipeline.py` erweitert): Reconnect-Supervisor (Standard an, nur Upstream): Backoff und Budget (Arbeitswerte, nicht gemessen), Qualitätsprüfung vor jedem Versuch, Stillstandserkennung, Stille während der Lücke, Ereignisse mit maskierter Quelle. Berührt Renderer und `RENDERER_LOCK` nicht. Noch ohne CLI-Anbindung; nur Simulator.
+- **E1b Schritt 5** (CLI): `kefplayer radio ... --ffmpeg PFAD --profile RAUM.json [--ffmpeg-sha256] [--radio-rate] [--no-reconnect]` startet Raum-EQ für Radio (Dekodieren, EQ, WAV 24 Bit, Reconnect). Ohne `--ffmpeg` unverändert E1. HLS bleibt abgelehnt. Nur Simulator mit Fake-Decoder; kein echtes ffmpeg, keine echte KEF. Dokumentation in `docs/radio.md`.
 - Detailentwurf E1b (`docs/radio-e1b-design.md`, nur Dokumentation): Ausgabe als WAV (PCM 24 Bit) ohne FLAC, ein ffmpeg-Prozess (Decoder), Reconnect standardmäßig an.
 - Planung Phase E (`docs/radio-plan.md`, `docs/favorites.example.json`): Codec-Regel (FLAC oder AAC ab 128 kbit/s, Ziel 192, MP3 ausgeschlossen), E1b mit ffmpeg als externer Decoder-/Encoder-Stufe. Nur Dokumentation, kein Code.
 - Neue Tests für alle genannten Teile (u. a. D1-Invarianten, Regressionstests, Simulator); die Testsuite umfasst nun mehr Tests (siehe CI).
 
 ### Behoben
 
+- Test `test_unreachable_upstream_gives_502_not_hang` war ein Race (Protokolleintrag wird nach der Antwort geschrieben); wartet jetzt.
 - D0/D1: Gruppenkollision zwischen Befunden gleichen Codes und Evidenz-Aliasing; Härtung gegen fehlerhafte Kategorien und Eingaben.
 - Health-Monitor: Zustand beim Beenden (`stopping`/`stopped`).
 

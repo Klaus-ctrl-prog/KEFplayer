@@ -15,5 +15,16 @@
 - **Ende:** `q` + Enter oder Strg+C; auch Ende des Senders oder Stopp durch den Renderer beendet die Sitzung. Es gibt keine Zeitgrenze für Live-Streams.
 - **Nicht unterstützt:** HLS und Playlist-URLs (PLS/M3U) und Shoutcast-v1-Sender, die mit `ICY 200 OK` antworten (Meldung `stream_unreachable`).
 
+## E1b: Raum-EQ für Radio (`--ffmpeg`, Stand 18.11.2026, nur Simulator)
+
+`kefplayer radio <URL oder Favorit> --ffmpeg C:\\Pfad\\ffmpeg.exe --profile RAUM.json [--ffmpeg-sha256 HEX] [--radio-rate HZ] [--no-reconnect]`
+
+- **Ablauf:** Qualitätsprüfung (E-6, wie oben) → ffmpeg dekodiert nach PCM → Raum-EQ (`--profile`, Filterzustand über Blöcke erhalten, fester Preamp) → WAV PCM **24 Bit** (Python) → Medienserver → KEF. Ohne `--ffmpeg` bleibt alles wie in E1 (unverändert durchgeleitet). `--profile`, `--ffmpeg-sha256`, `--radio-rate` und `--no-reconnect` ohne `--ffmpeg` werden mit Fehler abgelehnt.
+- **ffmpeg:** nur **absoluter Pfad**, keine PATH-Suche, nie automatisch geladen. Beim Start werden Pfad, Version und SHA-256 ausgegeben; mit `--ffmpeg-sha256` wird bei Abweichung **nicht gestartet**. Windows Application Control wird nicht umgangen (blockiert sie ffmpeg, kommt `decoder_unavailable`). Aufruf ohne Shell, mit Protokoll-Whitelist und ohne eigenes Reconnect von ffmpeg.
+- **Samplerate (E-17):** Senderrate ohne unnötiges Resampling, Rückfall 48 kHz (auch bei Raten unter 32 kHz, z. B. HE-AAC-Kernrate); `--radio-rate` überschreibt.
+- **Reconnect (E-11):** standardmäßig an, nur Upstream; vor **jedem** Versuch läuft die Qualitätsprüfung erneut. Während einer Lücke bekommt die KEF **Stille**. Backoff und Budget sind **Arbeitswerte, nicht gemessen** (2/5/10/30/60 s, höchstens 5 Versuche je 10 min, 30 je Sitzung, Stillstand nach 10 s). Endet das Budget: `stream_reconnect_exhausted`, Exitcode 1. Am Ende werden Zähler ausgegeben (Reconnects, Lücken, Unterläufe, Überlauf, übersteuerte Samples). Der Renderer und `RENDERER_LOCK` werden vom Reconnect nicht berührt.
+- **Pegel:** Es gibt keinen Stück-Limiter. Ist der Preamp zu hoch, werden übersteuerte Samples begrenzt und gezählt (kein Dither). Ohne manuellen Preamp setzt das Profil einen Headroom-Preamp aus dem Filter-Betragsgang.
+- **Grenzen:** **HLS bleibt auch hier abgelehnt** (die Qualitätsprüfung liest den Strom selbst; HLS-Unterstützung ist nicht gebaut). Keine Status-API/Health für Radio, keine Titelanzeige. Kein echtes ffmpeg und keine echte KEF getestet.
+
 ## Nicht geprüft
-Alles nur im Simulator (lokaler Fake-Sender, `MockRenderer`). **Ungeprüft an einer echten KEF Gen1:** ob sie `audioBroadcast`, `DLNA.ORG_OP=00`, den Live-Header-Satz und endlose Antworten ohne Content-Length akzeptiert und puffert. Die DLNA-FLAGS für Live sind aus dem Dateimodus übernommen (Annahme). Hardware-Test frühestens März 2027.
+Alles nur im Simulator (lokaler Fake-Sender, `MockRenderer`, Fake-Decoder statt ffmpeg). **Ungeprüft an einer echten KEF Gen1:** ob sie `audioBroadcast`, `DLNA.ORG_OP=00`, den Live-Header-Satz und endlose Antworten ohne Content-Length akzeptiert und puffert; für E1b zusätzlich, ob sie einen endlosen **WAV-24-Bit**-Strom mit unbekannter Länge und die eingefügte Stille akzeptiert. Die DLNA-FLAGS für Live sind aus dem Dateimodus übernommen (Annahme). Hardware-Test frühestens März 2027.
