@@ -176,7 +176,8 @@ def _print_event(rec: dict) -> None:
             extra.append(rec["error"])
         print(f"  Ende: {rec['end_reason']}" + (" (" + "; ".join(extra) + ")" if extra else ""))
     elif ev == "stream_start":
-        print(f"> Radio: {rec['title']}  [{rec['mime']}, unveraendert durchgeleitet, Quelle {rec['source']}]")
+        how = "dekodiert, Raum-EQ, 24 Bit" if rec["mime"] == "audio/wav" else "unveraendert durchgeleitet"
+        print(f"> Radio: {rec['title']}  [{rec['mime']}, {how}, Quelle {rec['source']}]")
     elif ev == "stream_end":
         extra = f" ({rec['error']})" if rec.get("error") else ""
         print(f"  Ende: {rec['end_reason']}{extra}")
@@ -401,11 +402,32 @@ def cmd_radio_check(args) -> int:
     return 0
 
 
-def cmd_radio(args) -> int:
-    """Internetradio (E1): Stream ueber den Medienserver unveraendert an den Renderer leiten. Kein DSP, keine API."""
-    from . import radio
+def _print_radio_event(ev: str, kw: dict) -> None:
+    if ev == "radio_stream_up":
+        print("  Radio: Strom laeuft" + (" (wieder verbunden)" if not kw.get("initial") else ""))
+    elif ev == "radio_gap":
+        print(f"  Radio: Luecke ({kw.get('reason')}); KEF bekommt Stille")
+    elif ev == "radio_reconnect_wait":
+        print(f"  Radio: neuer Versuch in {kw.get('delay_s'):g} s (Versuch {kw.get('attempt')})")
+    elif ev == "radio_failed":
+        print(f"  Radio: beendet ({kw.get('category')}): {kw.get('reason')}")
 
+
+def cmd_radio(args) -> int:
+    """Internetradio. Ohne --ffmpeg (E1): Stream unveraendert durchleiten. Mit --ffmpeg (E1b): dekodieren, Raum-EQ, WAV 24 Bit."""
+    from . import decoder, radio, radio_supervisor
+    from .radio_pipeline import RadioPipeline, choose_rate
+
+    e1b = bool(args.ffmpeg)
+    if not e1b and (args.profile or args.ffmpeg_sha256 or args.radio_rate or args.no_reconnect):
+        _err("Fehler (decoder_unavailable): --profile, --ffmpeg-sha256, --radio-rate und --no-reconnect brauchen --ffmpeg.")
+        return 2
     try:
+        ff = None
+        if e1b:
+            ff = decoder.check_ffmpeg(args.ffmpeg, pin_sha256=args.ffmpeg_sha256)
+            print(f"ffmpeg: {ff.path}\n  {ff.version}\n  SHA-256 {ff.sha256}")
+        profile = load_profile(args.profile) if e1b else None
         fav = radio.resolve_favorite(args.target, args.favorites)
         name, url = fav["name"], fav["url"]
         if radio.is_placeholder(url):
@@ -428,9 +450,38 @@ def cmd_radio(args) -> int:
     except OSError as e:
         sys.exit(f"Medienserver konnte nicht starten ({e}). Anderen --port waehlen.")
     print(f"Renderer: {renderer.info.friendly_name} ({renderer.info.host}); Medienserver {host_ip}:{server.port}")
-    print("Hinweis: die Lautstaerke des Renderers wird nicht veraendert. Radio: nur durchgeleitet (kein Raum-EQ).")
     player = Player(renderer, server, load_profile(None), log=RunLog(args.log), on_event=_print_event,
                     poll_s=args.poll, plain_protocolinfo=args.plain_protocolinfo)
+    pipe = sup = None
+    if e1b:
+        rate = choose_rate(rep.sample_rate, args.radio_rate)
+        pipe = RadioPipeline(None, profile, rate=rate, channels=2, supervised=True)
+        for w in pipe.stats().warnings:
+            _err(f"Hinweis: {w}")
+        print(f"Hinweis: die Lautstaerke des Renderers wird nicht veraendert. Radio mit Raum-EQ ueber ffmpeg: {rate} Hz, "
+              f"WAV PCM 24 Bit (an echter KEF Gen1 ungeprueft). Reconnect: {'aus' if args.no_reconnect else 'an'}.")
+        cached = [verdict]
+
+        def gate(u):
+            if cached:
+                return cached.pop()
+            return radio.quality_gate(u, favorite=fav, ffprobe=args.ffprobe, warmup_s=args.quality_warmup,
+                                      window_s=args.quality_window, strict_lc=args.strict_lc)[2]
+
+        def make(u):
+            d = decoder.Decoder(ff, info.url, rate=rate, channels=2)
+            d.start()
+            return d
+
+        def emit(ev, **kw):
+            player.log.write(ev, **kw)
+            _print_radio_event(ev, kw)
+
+        sup = radio_supervisor.RadioSupervisor(info.url, pipeline=pipe, gate=gate, make_decoder=make,
+                                               budget=radio_supervisor.ReconnectBudget(), emit=emit,
+                                               reconnect=not args.no_reconnect)
+    else:
+        print("Hinweis: die Lautstaerke des Renderers wird nicht veraendert. Radio: nur durchgeleitet (kein Raum-EQ).")
     if sys.stdin is not None and sys.stdin.isatty():
         print("Eingabe + Enter: q = Ende")
 
@@ -442,7 +493,16 @@ def cmd_radio(args) -> int:
 
         threading.Thread(target=reader, daemon=True).start()
     try:
-        res = player.play_stream(lambda: radio.open_stream(info.url), info.mime, info.ext, name, radio.mask_url(info.url))
+        if e1b:
+            pipe.start()
+            sup.start()
+            if not sup.wait_ready(30.0):
+                st = sup.stats()
+                _err(f"Fehler ({st.last_category or 'decoder_failed'}): Decoder nicht gestartet: {st.last_error or 'Zeitueberschreitung'}")
+                return 2
+            res = player.play_stream(pipe.open_source, "audio/wav", ".wav", name, radio.mask_url(info.url))
+        else:
+            res = player.play_stream(lambda: radio.open_stream(info.url), info.mime, info.ext, name, radio.mask_url(info.url))
     except KeyboardInterrupt:
         player.stop()
         try:
@@ -452,8 +512,19 @@ def cmd_radio(args) -> int:
         print("\nAbgebrochen.")
         return 130
     finally:
+        if sup is not None:
+            sup.stop()
+        if pipe is not None:
+            pipe.stop()
         server.stop()
     ok = res.get("end_reason") in ("ended", "stopped")
+    if e1b:
+        ps, ss = pipe.stats(), sup.stats()
+        print(f"Radio-Zaehler: Reconnects {ss.reconnects}, Luecken {ps.gaps}, Unterlaeufe {ps.underruns}, "
+              f"Ueberlauf {ps.overrun_bytes} Byte, uebersteuerte Samples {ps.clipped_samples}")
+        if ss.last_category and ss.state == "failed" and ss.last_category != "stream_ended":
+            _err(f"Fehler ({ss.last_category}): {ss.last_error}")
+            ok = False
     print(f"Fertig: {res.get('end_reason')}. Protokoll: {args.log}")
     return 0 if ok else 1
 
@@ -529,6 +600,11 @@ def build_parser() -> argparse.ArgumentParser:
     rd.add_argument("--log", default="kefplayer_log.jsonl", help="JSON-Lines-Protokoll")
     rd.add_argument("--poll", type=float, default=0.5, help="Abfrageintervall in s")
     rd.add_argument("--plain-protocolinfo", action="store_true", help="in der Metadaten-protocolInfo '*' statt DLNA-Flags verwenden")
+    rd.add_argument("--ffmpeg", help="E1b: ABSOLUTER Pfad zu ffmpeg (vom Nutzer installiert, keine PATH-Suche). Aktiviert Raum-EQ (Dekodieren, WAV 24 Bit)")
+    rd.add_argument("--ffmpeg-sha256", help="E1b: erwartete SHA-256 der ffmpeg-Datei (Pin); Abweichung = kein Start")
+    rd.add_argument("--profile", help="E1b: Filterprofil (.json oder Equalizer-APO-Textformat) als Raum-EQ; braucht --ffmpeg")
+    rd.add_argument("--radio-rate", type=int, help="E1b: Samplerate des Stroms in Hz (Standard: Senderrate, Rueckfall 48000)")
+    rd.add_argument("--no-reconnect", action="store_true", help="E1b: bei Stromabbruch nicht neu verbinden")
     rd.set_defaults(func=cmd_radio)
 
     rc = sub.add_parser("radio-check", help="Favoriten auf Stream-Qualitaet pruefen (E-6), ohne Renderer")

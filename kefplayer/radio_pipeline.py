@@ -25,6 +25,23 @@ SILENCE_MS = 20
 UNDERRUN_WAIT_S = 0.2
 
 
+STANDARD_RATES = (32000, 44100, 48000, 88200, 96000, 176400, 192000)
+FALLBACK_RATE = 48000
+
+
+def choose_rate(sender_rate: int | None, override: int | None = None) -> int:
+    """E-17: Senderrate ohne unnoetiges Resampling; Rueckfall 48 kHz.
+
+    Raten unter 32 kHz oder unbekannte Raten gelten als nicht belastbar (bei HE-AAC meldet der ADTS-Kopf nur die
+    halbe Kernrate; ein Resampling dorthin wuerde die Hoehen abschneiden) -> Rueckfall. ``override`` gewinnt immer.
+    """
+    if override is not None:
+        return int(override)
+    if sender_rate in STANDARD_RATES:
+        return int(sender_rate)
+    return FALLBACK_RATE
+
+
 class _DecoderLike(Protocol):
     def read(self, n: int) -> bytes: ...
     def stop(self, grace_s: float = ...) -> int | None: ...
