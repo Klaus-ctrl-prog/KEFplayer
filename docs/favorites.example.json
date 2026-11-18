@@ -30,14 +30,34 @@
     "notes": "Startkandidat. Erwartet adaptives AAC bis 192 kbit/s; hoechste Stufe muss per URL/Variante erzwungen und verifiziert werden. ubuntuusers nennt fuer die 'high'-URLs (dispatcher.rndfnk.com) nur '128kbit MP3'; Region (Rhein-Main, Nordhessen ...) waehlen."
   },
   {
-    "name": "ROCK ANTENNE",
-    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "name": "ROCK ANTENNE Live",
+    "url": "https://stream.rockantenne.de/rockantenne/stream/aacp",
     "genre": "Rock",
     "expected_codec": "aac",
     "min_bitrate_kbps": 192,
     "status": "to_verify",
     "verified_at": null,
-    "notes": "Nur aufnehmen, wenn tatsaechlich AAC >= 192 kbit/s (oder FLAC) verfuegbar ist."
+    "notes": "Quelle: offizielle Streamlink-Seite des Senders (abgerufen 18.11.2026): rockantenne.de/rockhoeren/empfang/streamlinks. Die Seite nennt KEINE Bitrate; 'aacp' kann HE-AAC (AAC+) bedeuten (nicht belegt, siehe E-10). Qualitaet erst nach Stream-Pruefung (E-6) zulassen."
+  },
+  {
+    "name": "ROCK ANTENNE Classic Rock",
+    "url": "https://stream.rockantenne.de/classic-perlen/stream/aacp",
+    "genre": "Classic Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Quelle: offizielle Streamlink-Seite des Senders (abgerufen 18.11.2026): rockantenne.de/rockhoeren/empfang/streamlinks. Die Seite nennt KEINE Bitrate; 'aacp' kann HE-AAC (AAC+) bedeuten (nicht belegt, siehe E-10). Qualitaet erst nach Stream-Pruefung (E-6) zulassen."
+  },
+  {
+    "name": "ROCK ANTENNE Bayern Classic Rock",
+    "url": "https://stream.rockantenne.bayern/classic-perlen/stream/aacp",
+    "genre": "Classic Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Quelle: offizielle Streamlink-Seite des Senders (abgerufen 18.11.2026): rockantenne.bayern/rockhoeren/empfang/streamlinks. Die Seite nennt KEINE Bitrate; 'aacp' kann HE-AAC (AAC+) bedeuten (nicht belegt, siehe E-10). Qualitaet erst nach Stream-Pruefung (E-6) zulassen."
   },
   {
     "name": "ANTENNE BAYERN Classic Rock",
