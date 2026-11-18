@@ -30,6 +30,16 @@
     "notes": "Startkandidat. Erwartet adaptives AAC bis 192 kbit/s; hoechste Stufe muss per URL/Variante erzwungen und verifiziert werden. ubuntuusers nennt fuer die 'high'-URLs (dispatcher.rndfnk.com) nur '128kbit MP3'; Region (Rhein-Main, Nordhessen ...) waehlen."
   },
   {
+    "name": "SWR3",
+    "url": "https://example.invalid/HIER-GEPRUEFTE-AAC-URL-EINTRAGEN",
+    "genre": "Pop/Rock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 128,
+    "status": "candidate",
+    "verified_at": null,
+    "notes": "Auf Wunsch des Nutzers (18.11.2026) in die Liste aufgenommen, unabhaengig von der Qualitaet. Keine offizielle Stream-URL belegt (nur Verzeichnisse gefunden); URL von der offiziellen SWR-Seite eintragen. Ob der Sender die Regel E-6 erfuellt (AAC ab 128 kbit/s, kein MP3), ist offen."
+  },
+  {
     "name": "ROCK ANTENNE Live",
     "url": "https://stream.rockantenne.de/rockantenne/stream/aacp",
     "genre": "Rock",
