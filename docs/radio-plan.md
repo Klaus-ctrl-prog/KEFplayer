@@ -35,8 +35,9 @@ Vorlage: `docs/favorites.example.json` (Liste von Objekten, angelehnt an die str
 | WDR 2 | Startkandidat (erwartet AAC 192) | URL fehlt (Region wählen), nicht verifiziert |
 | hr3 | Startkandidat (adaptives AAC bis 192, höchste Stufe erzwingen) | URL fehlt (Region wählen), nicht verifiziert |
 | ROCK ANTENNE Live, ROCK ANTENNE Classic Rock, ROCK ANTENNE Bayern Classic Rock | zu prüfen | **offizielle URLs eingetragen** (Streamlink-Seiten rockantenne.de / rockantenne.bayern, abgerufen 18.11.2026, `.../stream/aacp`); die Seiten nennen **keine Bitrate**, `aacp` kann HE-AAC bedeuten (nicht belegt); Aufnahme als `verified` erst nach Stream-Prüfung (E-6) |
-| ROCK ANTENNE Österreich Classic Rock, ANTENNE BAYERN „ROCK ANTENNE“ | offen | im Nutzerhinweis genannt, **URL von mir nicht belegt** (nur `rockantenne-oesterreich` auf rockantenne.de gesehen, das ist das Hauptprogramm); Adresse von der jeweiligen offiziellen Streamlink-Seite nötig |
-| ANTENNE BAYERN Classic Rock, MDR JUMP, 80s80s | zu prüfen | nur aufnehmen, wenn AAC ≥ 192 kbit/s oder FLAC tatsächlich verfügbar |
+| ROCK ANTENNE Österreich Classic Rock | zu prüfen | **offizielle URL eingetragen** (rockantenne.at/empfang/streamlinks, abgerufen 18.11.2026, `.../classic-perlen/stream/aacp`); keine Bitrate genannt, HE-AAC-Risiko wie oben |
+| ANTENNE BAYERN Classic Rock | zu prüfen | URL **vom Nutzer genannt** (`stream.antenne.de/classic-rock-live/stream/aacp`, Herkunft KI-Text); offizielle Seite für mich nicht abrufbar, Adresse **nicht belegt** |
+| MDR JUMP, 80s80s | zu prüfen | nur aufnehmen, wenn AAC ≥ 192 kbit/s oder FLAC tatsächlich verfügbar |
 
 **Wichtiger Befund:** In der Community-Liste [ubuntuusers: Internetradio/Stationen](https://wiki.ubuntuusers.de/Internetradio/Stationen/) (abgerufen 18.11.2026, möglicherweise veraltet) stehen für 1LIVE und WDR 2 URLs mit `mp3/128` und für hr3 „128kbit MP3 stereo“. Die Angabe „AAC 192 kbit/s“ wurde **nicht belegt**. Nach E-6 wären diese bekannten URLs **abzulehnen**. In der Vorlage stehen deshalb bewusst **Platzhalter-URLs** (`example.invalid`), keine erfundenen Adressen. Echte, geprüfte AAC-URLs müssen vom Nutzer oder aus der Senderseite des jeweiligen Anbieters stammen und per Qualitätsprüfung bestätigt werden.
 
