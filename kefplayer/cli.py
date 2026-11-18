@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import threading
 import urllib.parse
@@ -352,15 +353,72 @@ def cmd_play(args) -> int:
 # ---- Parser -----------------------------------------------------------------------
 
 
+def _print_verdict(name, rep, verdict) -> None:
+    label = {"full": "volle Qualitaet", "reduced": "REDUZIERTE Qualitaet", "rejected": "ABGELEHNT"}[verdict.level]
+    br = f"{verdict.effective_kbps:.0f} kbit/s" if verdict.effective_kbps else "?"
+    prof = rep.profile or "Profil unbekannt"
+    flags = f" [{', '.join(verdict.flags)}]" if verdict.flags else ""
+    print(f"  {name}: {label}: Codec {rep.codec}, {prof}, {br} ({rep.source}){flags}")
+    for r in verdict.reasons:
+        print(f"    - {r}")
+
+
+def cmd_radio_check(args) -> int:
+    """Alle Favoriten (oder einen) pruefen, ohne an den Renderer zu senden."""
+    from . import radio
+
+    try:
+        favs = radio.load_favorites(args.favorites)
+    except radio.RadioError as e:
+        _err(f"Fehler ({e.category}): {e}")
+        return 2
+    if args.only:
+        favs = [f for f in favs if f["name"].lower() == args.only.strip().lower()]
+        if not favs:
+            _err(f"Favorit '{args.only}' nicht in der Liste.")
+            return 2
+    rows = []
+    for fav in favs:
+        name, url = fav["name"], fav["url"]
+        if radio.is_placeholder(url):
+            rows.append({"name": name, "level": "no_url", "category": "stream_url_invalid"})
+            print(f"  {name}: keine URL (Platzhalter)")
+            continue
+        try:
+            _, rep, verdict = radio.quality_gate(url, favorite=fav, ffprobe=args.ffprobe, warmup_s=args.quality_warmup,
+                                                 window_s=args.quality_window, strict_lc=args.strict_lc)
+        except radio.RadioError as e:
+            rows.append({"name": name, "level": "error", "category": e.category})
+            print(f"  {name}: Fehler ({e.category}): {e}")
+            continue
+        _print_verdict(name, rep, verdict)
+        rows.append({"name": name, "level": verdict.level, "category": verdict.category, "codec": rep.codec,
+                     "profile": rep.profile, "effective_kbps": verdict.effective_kbps, "flags": verdict.flags,
+                     "source": rep.source})
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+    print("Hinweis: Ergebnis nur fuer diesen Zeitpunkt; nichts an einen Renderer gesendet; nicht an einer KEF Gen1 geprueft.")
+    return 0
+
+
 def cmd_radio(args) -> int:
     """Internetradio (E1): Stream ueber den Medienserver unveraendert an den Renderer leiten. Kein DSP, keine API."""
     from . import radio
 
     try:
-        name, url = radio.resolve_target(args.target, args.favorites)
-        info = radio.probe(url)
+        fav = radio.resolve_favorite(args.target, args.favorites)
+        name, url = fav["name"], fav["url"]
+        if radio.is_placeholder(url):
+            raise radio.RadioError("stream_url_invalid", f"Favorit '{name}' hat noch keine echte URL (Platzhalter).")
+        print(f"Pruefe Stream-Qualitaet ({radio.mask_url(url)}), ca. {args.quality_warmup + args.quality_window:.0f} s ...")
+        info, rep, verdict = radio.quality_gate(url, favorite=fav, ffprobe=args.ffprobe, warmup_s=args.quality_warmup,
+                                                window_s=args.quality_window, strict_lc=args.strict_lc)
     except radio.RadioError as e:
         _err(f"Fehler ({e.category}): {e}")
+        return 2
+    _print_verdict(name, rep, verdict)
+    if not verdict.ok:
+        _err(f"Fehler ({verdict.category}): Stream erfuellt die Qualitaetsregel nicht; nichts an die KEF gesendet.")
         return 2
     renderer = resolve_renderer(args)
     host_ip = args.host_ip or local_ip_for(renderer.info.host)
@@ -398,6 +456,13 @@ def cmd_radio(args) -> int:
     ok = res.get("end_reason") in ("ended", "stopped")
     print(f"Fertig: {res.get('end_reason')}. Protokoll: {args.log}")
     return 0 if ok else 1
+
+
+def _quality_args(p) -> None:
+    p.add_argument("--ffprobe", help="Pfad zu ffprobe (optional, vom Nutzer installiert; liefert Profil und deklarierte Bitrate)")
+    p.add_argument("--strict-lc", action="store_true", help="nur AAC-LC zulassen; HE-AAC und nicht ausschliessbares HE-AAC ablehnen")
+    p.add_argument("--quality-warmup", type=float, default=3.0, help="Sekunden Einlauf vor der Messung (Standard 3)")
+    p.add_argument("--quality-window", type=float, default=10.0, help="Messfenster in Sekunden (Standard 10)")
 
 
 def _renderer_args(p: argparse.ArgumentParser) -> None:
@@ -456,6 +521,7 @@ def build_parser() -> argparse.ArgumentParser:
     rd = sub.add_parser("radio", help="Internetradio (E1): Stream unveraendert durchleiten (nur AAC/Ogg/Opus/FLAC, kein MP3, kein Raum-EQ)")
     rd.add_argument("target", help="Stream-URL (http/https) oder Name aus --favorites")
     rd.add_argument("--favorites", help="Favoritenliste (JSON: [{\"name\": ..., \"url\": ...}])")
+    _quality_args(rd)
     _renderer_args(rd)
     rd.add_argument("--port", type=int, default=8765, help="Port des Medienservers (Standard 8765; 0 = beliebig)")
     rd.add_argument("--bind", default="0.0.0.0", help="Schnittstelle des Medienservers")
@@ -464,6 +530,13 @@ def build_parser() -> argparse.ArgumentParser:
     rd.add_argument("--poll", type=float, default=0.5, help="Abfrageintervall in s")
     rd.add_argument("--plain-protocolinfo", action="store_true", help="in der Metadaten-protocolInfo '*' statt DLNA-Flags verwenden")
     rd.set_defaults(func=cmd_radio)
+
+    rc = sub.add_parser("radio-check", help="Favoriten auf Stream-Qualitaet pruefen (E-6), ohne Renderer")
+    rc.add_argument("favorites", help="Favoritenliste (JSON)")
+    rc.add_argument("--only", help="nur diesen Favoriten pruefen")
+    rc.add_argument("--json", action="store_true", help="Ergebnis zusaetzlich als JSON")
+    _quality_args(rc)
+    rc.set_defaults(func=cmd_radio_check)
 
     pl = sub.add_parser("play", help="Dateien oder Ordner auf dem Renderer abspielen")
     pl.add_argument("inputs", nargs="+")

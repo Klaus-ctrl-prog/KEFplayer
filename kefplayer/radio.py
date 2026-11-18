@@ -16,18 +16,16 @@ from pathlib import Path
 UA = "kefplayer-radio"
 CONNECT_TIMEOUT_S = 10.0
 
-# Zugelassene Inhaltstypen (Kleinbuchstaben, ohne Parameter) -> Dateiendung fuer die lokale URL.
+# Zugelassene Inhaltstypen (E-6, Stand 18.11.2026): nur AAC und FLAC. Die Bitrate wird in quality.py geprueft.
 ALLOWED_MIMES = {
     "audio/aac": ".aac",
     "audio/aacp": ".aac",
     "audio/mp4": ".m4a",
     "audio/x-m4a": ".m4a",
-    "audio/ogg": ".ogg",
-    "application/ogg": ".ogg",
-    "audio/opus": ".opus",
     "audio/flac": ".flac",
     "audio/x-flac": ".flac",
 }
+HLS_MIMES = {"application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/mpegurl", "audio/x-mpegurl"}
 # Ausdruecklich abgelehnt (Richtlinie, kein technischer Fehler).
 REJECTED_MIMES = {"audio/mpeg", "audio/mp3", "audio/x-mpeg", "audio/mpeg3", "audio/x-mp3"}
 
@@ -83,7 +81,9 @@ def check_codec(content_type: str | None) -> tuple[str, str]:
     mime = normalize_mime(content_type)
     if mime in REJECTED_MIMES:
         raise RadioError("stream_format_unsupported",
-                         f"{mime}: MP3 ist ausgeschlossen (nur hochwertige Codecs: AAC, Ogg/Opus, FLAC).")
+                         f"{mime}: MP3 ist ausgeschlossen (nur AAC ab 128 kbit/s und FLAC).")
+    if mime in HLS_MIMES:
+        raise RadioError("stream_format_unsupported", "HLS/Playlist: nur ueber die ffmpeg-Stufe (E1b) abspielbar, E1 kann kein HLS.")
     if mime not in ALLOWED_MIMES:
         raise RadioError("stream_format_unsupported", f"Inhaltstyp nicht zugelassen oder unbekannt: {mime or '(keiner)'}.")
     return mime, ALLOWED_MIMES[mime]
@@ -141,18 +141,60 @@ def load_favorites(path: str | Path) -> list[dict]:
         if name.lower() in seen:
             raise RadioError("favorites_invalid", f"Eintrag {i}: Name '{name}' doppelt.")
         seen.add(name.lower())
-        out.append({"name": name, "url": validate_url(item.get("url", ""))})
+        fav = {"name": name, "url": validate_url(item.get("url", ""))}
+        for k in ("genre", "expected_codec", "min_bitrate_kbps", "status", "verified_at", "notes"):
+            if k in item:
+                fav[k] = item[k]
+        out.append(fav)
     return out
 
 
 def resolve_target(target: str, favorites_path: str | Path | None) -> tuple[str, str]:
     """Gibt (name, url) zurueck. ``target`` ist eine URL oder ein Favoritenname."""
+    fav = resolve_favorite(target, favorites_path)
+    return fav["name"], fav["url"]
+
+
+def resolve_favorite(target: str, favorites_path: str | Path | None) -> dict:
+    """Wie resolve_target, aber mit allen Favoritenfeldern (name, url, expected_codec, min_bitrate_kbps, ...)."""
     if "://" in target or target.lower().startswith(("javascript:", "file:", "data:")):
         url = validate_url(target)  # jedes Schema ausser http/https endet hier mit einem klaren Fehler
-        return urllib.parse.urlsplit(url).hostname or "radio", url
+        return {"name": urllib.parse.urlsplit(url).hostname or "radio", "url": url}
     if favorites_path is None:
         raise RadioError("favorites_invalid", "Kein Favorit ohne --favorites DATEI; oder eine http(s)-URL angeben.")
     for fav in load_favorites(favorites_path):
         if fav["name"].lower() == target.strip().lower():
-            return fav["name"], fav["url"]
+            return fav
     raise RadioError("favorites_invalid", f"Favorit '{target}' nicht in der Liste.")
+
+
+PLACEHOLDER_HOST = "example.invalid"
+
+
+def is_placeholder(url: str) -> bool:
+    try:
+        return (urllib.parse.urlsplit(url).hostname or "") == PLACEHOLDER_HOST
+    except ValueError:
+        return False
+
+
+def quality_gate(url: str, *, favorite: dict | None = None, ffprobe: str | None = None,
+                 warmup_s: float = 3.0, window_s: float = 10.0, strict_lc: bool = False):
+    """Qualitaetspruefung vor der Wiedergabe (E-6). Gibt (StreamInfo, StreamReport, Verdict) zurueck.
+
+    Wirft RadioError bei Verbindungs-/Formatfehlern. Das Urteil kann ``rejected`` sein (kein Wurf).
+    """
+    from . import quality
+
+    info = probe(url)
+    fav = favorite or {}
+    floor = quality.effective_floor(fav.get("min_bitrate_kbps"))
+    rep = quality.native_probe(lambda: open_stream(info.url), warmup_s=warmup_s, window_s=window_s)
+    if ffprobe:
+        rep = quality.merge(rep, quality.ffprobe_probe(info.url, [ffprobe]))
+    verdict = quality.evaluate(rep, floor_kbps=floor, strict_lc=strict_lc)
+    exp = (fav.get("expected_codec") or "").lower()
+    if verdict.ok and exp and exp != rep.codec:
+        verdict = quality.Verdict("rejected", "stream_format_unsupported",
+                                  [f"Erwarteter Codec '{exp}', erkannt '{rep.codec}'."], verdict.effective_kbps, verdict.flags)
+    return info, rep, verdict
