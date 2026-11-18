@@ -85,10 +85,11 @@ Sender-URL (HTTP/HLS)
 Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch die Gen1; Verhalten bei Stille-Einspeisung und Senderabbruch; Latenz-/Pufferverhalten in der Praxis; Raumkorrektur-Wirkung nur durch Messung (UMIK-1/REW, nach März 2027).
 
 ## 9. Offene Entscheidungen (Stand heute)
-- **E-8** ICY-Titelanzeige gewünscht?
+- **E-8:** entschieden (18.11.2026): Titelanzeige später in E3, nicht in E1b.
 - **E-9** Toleranz der gemessenen Bitrate; **E-10** nur AAC-LC zulassen?
-- **E-11** Reconnect Standard an oder hinter `--enable-repair`?
-- **E-13** ffmpeg in der CI?
+- **E-11:** entschieden: Reconnect standardmäßig an (nur Upstream, abschaltbar mit `--no-reconnect`), nicht hinter `--enable-repair`.
+- **E-13:** entschieden: ffmpeg nicht in der CI (Fake-Decoder).
+- **E-15 (offen):** Samplerate/Bittiefe der Ausgabe; **E-16 (offen):** Ausgabe FLAC (zweiter ffmpeg) oder WAV/L16. Siehe `docs/radio-e1b-design.md`.
 - Echte, geprüfte **AAC-≥192-/FLAC-URLs** der Startsender (liefert der Nutzer oder die Senderseite; nicht aus Community-Listen übernehmen).
 
 ## 10. Verweise
@@ -108,3 +109,5 @@ Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch 
 - **Nur Wiedergabe, kein Mitschnitt:** Der Stream wird nur im Arbeitsspeicher gepuffert (Ringpuffer) und live an die eigene KEF im Heimnetz geleitet. **Kein Speichern auf Platte, kein Cache, keine Aufzeichnung, keine Weitergabe** an Dritte oder ins Internet. Die Medienserver-Bindung (`--bind`) soll im Heimnetz bleiben.
 - **Verzeichnisdienste (z. B. radio.de):** keine automatische Abfrage, kein Scraping und keine Übernahme von Senderlisten (E-2 bleibt). Die Nutzungsbedingungen von radio.de habe ich **nicht gelesen**; ob und wie deren Daten oder Weiterleitungs-URLs genutzt werden dürfen, ist **ungeprüft**. Vorrang haben die **offiziellen Streamlink-Seiten der Sender**. Wer eine Adresse aus einem Verzeichnis von Hand in die eigene Favoritenliste übernimmt, trägt Quelle und Datum in `notes` ein; sie wird wie jede Nutzer-URL behandelt (Prüfung nach E-6).
 - **Verzeichnis-Weiterleitungen** können Werbung, Tracking-Parameter oder wechselnde Adressen enthalten; URLs werden in Meldungen ohnehin maskiert.
+
+Detailentwurf E1b: `docs/radio-e1b-design.md`.

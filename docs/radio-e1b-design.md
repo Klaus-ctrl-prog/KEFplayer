@@ -1,0 +1,91 @@
+# E1b Detailentwurf: Radio mit Raum-EQ (ffmpeg-Stufe), Stand 18.11.2026
+
+Status: **Entwurf, kein Code.** Nichts ist an einer echten KEF Gen1 geprüft (frühestens März 2027). Annahmen sind markiert. Grundlage: `docs/radio-plan.md`.
+
+## 1. Entscheidungen (Nutzer, 18.11.2026)
+- **E-8:** ICY-Titelanzeige erst später (E3), nicht Teil von E1b.
+- **E-11:** Reconnect **standardmäßig an**, betrifft nur die Verbindung zum Sender, nie den Renderer; mit Versuchsbudget und Protokoll. Abschaltbar mit `--no-reconnect`.
+- **E-13:** ffmpeg **nicht** in der CI. CI testet mit Fake-Decodern; echte ffmpeg-Tests laufen nur lokal und werden sonst übersprungen.
+- Weiter gelten E-1 bis E-3, E-6 (FLAC oder AAC ab 128 kbit/s, MP3 aus), E-12 (ffmpeg extern).
+
+## 2. Befunde im vorhandenen Code (`kefplayer/dsp.py`, gelesen)
+- `Profile` enthält gemeinsame Filter, **je Kanal** Filter, Pegel (`gain_db`) und **Verzögerung** (`delay_ms`) sowie einen Preamp (`preamp_db`, automatisch über `auto_preamp_db(nch, fs)`).
+- `apply_profile` arbeitet auf einem **ganzen Stück**: `sosfilt` ohne Zustand, Verzögerung durch Verlängerung des Arrays, **Clipping-Schutz durch Skalierung des gesamten Stücks** (`ceiling`). **Alle drei Punkte sind live nicht übertragbar** (kein Zustand zwischen Blöcken, keine Delay-Leitung, keine Stückspitze).
+- Filter werden mit `f.sos(fs)` für eine feste Samplerate entworfen: Im Live-Betrieb muss die Samplerate fest sein.
+
+## 3. Datenfluss und Threads
+```
+Sender-URL ─► [Qualitätsprüfung E1.1] ─► ffmpeg (Decoder) ─stdout PCM f32le─► Leser-Thread
+   ─► Ringpuffer ─► Verarbeitungs-Thread (StreamingProfile) ─► Encoder-Stufe ─► MediaServer /s/<token> ─► KEF
+```
+- **Leser-Thread:** liest ffmpeg-stdout in festen Blöcken, schreibt in den Ringpuffer, erkennt Stillstand (kein Datenfluss für N Sekunden) und Prozessende.
+- **Stderr-Thread:** leert ffmpeg-stderr dauernd (sonst Blockade der Pipe), bereinigt URLs/Tokens und hält nur die letzten Zeilen für die Diagnose.
+- **Verarbeitungs-Thread:** zieht Blöcke aus dem Ringpuffer, wendet das Profil an, übergibt an die Encoder-Stufe; bei Unterlauf Stille.
+- **Medienserver-Anbindung:** Die Encoder-Ausgabe wird dem bestehenden Live-Handler (E1) als Quelle (`read1/close`) gegeben; der Handler endet, wenn der Stream abgemeldet wird.
+- **Beenden:** Stopp/Strg+C → Stream abmelden, ffmpeg-Prozesse beenden (zuerst sanft, dann hart, unter Windows inkl. Kindprozessen), Threads zusammenführen, Pipes schließen; keine Zombie-Prozesse (Test).
+
+## 4. ffmpeg: Aufruf, Herkunft, Sicherheit
+- **Herkunft:** nur vom Nutzer installiert; **absoluter Pfad** per `--ffmpeg PFAD` (keine PATH-Suche, kein Standardordner: unter Windows würde die Suche sonst auch das aktuelle Verzeichnis berücksichtigen). Beim Start: Datei vorhanden, `ffmpeg -version` auslesen, Pfad, Version und **SHA-256 der Datei** ins Protokoll; optional `--ffmpeg-sha256` zum Festpinnen (Abweichung = Abbruch). Es wird **nichts heruntergeladen oder ausgeführt, was nicht der Nutzer ausdrücklich angegeben hat**. Windows-Builds sind oft **unsigniert**; Windows Application Control wird **nicht umgangen**: Blockiert sie ffmpeg, meldet E1b „nicht verfügbar“ (E1 bleibt nutzbar, ohne EQ).
+- **Aufruf:** `subprocess` mit Argumentliste, `shell=False`, `stdin=DEVNULL`, `-nostdin`, `-hide_banner`, `-loglevel warning`, `-protocol_whitelist http,https,tcp,tls,crypto`, `-rw_timeout`, `-reconnect*`-Optionen **nicht** verwenden (Reconnect macht der Supervisor, damit er geprüft und gezählt ist), Ausgabe `-f f32le -ac 2 -ar <Rate> pipe:1`.
+- **URL-Hygiene:** URL nur als Argument; in Meldungen und Protokoll maskiert (Schema://Host:Port/...); stderr wird vor dem Speichern bereinigt.
+- **HLS:** ffmpeg wählt die Variante; die **höchste Stufe muss erzwungen** werden (Variantenwahl per Option oder direkter Varianten-URL), und die Qualitätsprüfung gilt für die tatsächlich gewählte Variante. Ob die Sender entsprechende URLs anbieten, ist **nicht belegt**.
+
+## 5. Raum-EQ im Live-Betrieb (Refactor, noch nicht implementiert)
+Neue Klasse **`StreamingProfile`** (in `dsp.py` oder eigenem Modul), die das vorhandene `Profile` wiederverwendet:
+- **Filterzustand:** je Kanal `sos = vstack(f.sos(fs))` einmal berechnen; `sosfilt(sos, block, zi=zi)` mit **übergebenem und zurückgegebenem Zustand**. Startzustand Null.
+- **Pegel:** `preamp_db` und `channel_gain_db` fest einmal bestimmt. **Auto-Preamp** aus `auto_preamp_db(nch, fs)` (Headroom nach größter Anhebung des Profils), kein stückweises Skalieren.
+- **Verzögerung:** pro Kanal eine Delay-Leitung (Ringpuffer) mit Zustand über Blöcke.
+- **Clipping:** statt Stückskalierung **fester Headroom** (Preamp); zusätzlich **Zähler** für Übersteuerung beim Umwandeln ins Ausgabeformat und Warnung im Protokoll. Ein Limiter mit Vorausschau kostet Latenz und ist **nicht** vorgesehen (offen, falls Zähler Übersteuerung zeigen).
+- **Äquivalenztest (Pflicht):** Verarbeitung in Blöcken beliebiger Größe (auch 1 Sample, ungerade Größen) liefert **dasselbe Ergebnis wie `apply_profile` am Stück** (ohne Stückskalierung), innerhalb Rechengenauigkeit.
+- **Profilwechsel im laufenden Stream:** nicht in E1b (Neustart des Streams); später mit Überblendung.
+- **Neutrales Profil:** Durchleitung der PCM-Daten ohne Filter (nur Format/Pegelweg getestet).
+- **Projektregeln:** nur Minimalphasen-IIR, keine FIR; keine Boosts in Auslöschungen (liegt am Profil, nicht am Player); Hinweis im Start: Dieser Weg läuft über DLNA, **nicht** über Equalizer APO, keine Doppelfilterung zusammen mit KEF/Saxx-Korrektur gleicher Art.
+
+## 6. Ausgabeformat zur KEF
+- **E-15 (offen):** Samplerate und Bittiefe der Ausgabe (Vorschlag: feste Rate gleich der Senderrate bzw. 48 kHz; Bittiefe 24 Bit, damit kein Dither nötig ist). Ob die Gen1 die jeweilige Kombination als Endlosstrom akzeptiert, ist **ungeprüft**.
+- **E-16 (offen):** Encoder-Stufe **FLAC** (zweiter ffmpeg-Prozess, Datei-FLAC ist im Projekt bekannt) **oder WAV/L16** (kein Encoder nötig, mehr Bandbreite im LAN, bei Endlosstrom unbekannte Länge im Header). Vorschlag: Schnittstelle `Encoder` mit beiden Varianten, Standard **FLAC**, Umschalter `--radio-out flac|wav`; endgültige Wahl erst nach Hardwaretest (März 2027).
+
+## 7. Ringpuffer, Unterlauf, Überlauf
+- Puffer nur im **Arbeitsspeicher** (keine Datei, kein Cache, kein Mitschnitt; siehe Plan, Abschnitt 12).
+- **Unterlauf:** Stille einspeisen, Zähler und Ereignis `radio_underrun`. **Überlauf:** ältesten Block verwerfen, Zähler und Ereignis.
+- **Zielwerte** (Reserve, maximale Füllung, Blockgröße) **nur durch Messung im Simulator festlegen**; hier absichtlich keine Zahlen.
+- Taktabweichung zwischen Sender und KEF wird vom Puffer aufgefangen, da die KEF den Strom über TCP abruft (Rückdruck): **Annahme**, am Gerät zu prüfen.
+
+## 8. Reconnect (kontrolliert, E-11)
+- **Zustände:** `connecting → streaming → stalled → reconnecting → streaming | failed`.
+- **Auslöser:** ffmpeg endet, oder kein PCM-Datenfluss für N Sekunden (N durch Messung festzulegen).
+- **Ablauf:** alten ffmpeg beenden → Wartezeit mit begrenztem Backoff → **erneute Qualitätsprüfung (E-6)** → neuer ffmpeg. Währenddessen **Stille** an die Encoder-Stufe, damit die Verbindung zur KEF offen bleibt (**Annahme**, dass die Gen1 dann nicht stoppt).
+- **Budget:** je Zeitfenster und gesamt begrenzt (Muster `repair_budget.py`, nur Zähler, keine Schleifen ohne Ende). Danach sauberes Ende mit Kategorie `stream_reconnect_exhausted`.
+- **Abgrenzung:** Reconnect berührt weder Renderer noch `RENDERER_LOCK` und gehört **nicht** zur D2-Reparatur (kein `--enable-repair`). Die Wiedergabesitzung (`track_active`) bleibt während des Reconnects gesetzt, damit der Health-Monitor den Renderer nicht abfragt.
+- **Protokoll:** Ereignisse `radio_reconnect_start/result/blocked` (Ziel maskiert), Zähler im Status.
+
+## 9. Fehlerkategorien und Ereignisse (für E2/E3)
+`stream_unreachable`, `stream_http_error`, `stream_format_unsupported`, `stream_quality_too_low`, `stream_quality_unverified`, `stream_stalled`, `stream_reconnect_exhausted`, `decoder_unavailable` (ffmpeg fehlt/blockiert/Pin verletzt), `decoder_failed` (Prozess beendet, Exitcode), `encoder_failed`. Status (E3): Zustand, Reconnect-Zähler, Unter-/Überläufe, Übersteuerungszähler, Pufferfüllung, ffmpeg-Version. Alle Ausgaben ohne volle URL.
+
+## 10. Fehlerbilder
+| Fall | Verhalten |
+|---|---|
+| ffmpeg fehlt, blockiert oder Prüfsumme weicht ab | E1b nicht verfügbar, klare Meldung, kein Start |
+| Sender bricht ab | Reconnect nach Abschnitt 8 |
+| Sender liefert Qualität unter E-6 nach Reconnect | Reconnect abgelehnt, Ende |
+| ffmpeg hängt ohne Ausgabe | Stillstandserkennung, Prozess beenden, Reconnect |
+| ffmpeg stderr voll | nicht möglich (eigener Lese-Thread) |
+| KEF trennt die Verbindung | Stream abmelden, Prozesse beenden, Ende mit Grund |
+| Pufferunterlauf | Stille plus Zähler |
+| Profil nicht ladbar | Start abgelehnt vor jeder Verbindung |
+
+## 11. Tests (Simulator, ohne ffmpeg in der CI)
+- **Fake-Decoder:** kleines Python-Skript, das PCM (Sinus/Impulse) in Echtzeit liefert, abbricht, hängt oder Müll schreibt; Pfad per `--ffmpeg`-Ersatz für Tests (nur im Testcode).
+- **Fake-Encoder/Ausgabe:** Test-Encoder liefert WAV mit unbekannter Länge; `MockRenderer` liest den Strom.
+- **Pflichtfälle:** Äquivalenztest Block vs. Stück; Delay-Leitung über Blockgrenzen; Auto-Preamp verhindert Übersteuerung bei Testprofil; Unterlauf/Überlauf-Zähler; Reconnect-Budget und -Backoff mit Fake-Uhr; erneute Qualitätsprüfung vor Reconnect; Stillstandserkennung; Prozessende ohne Zombies; stderr-Bereinigung (keine URL im Protokoll); ffmpeg-Pfadprüfung (relativ, fehlend, Prüfsumme); kein Zugriff auf `RENDERER_LOCK`; Stoppen während Reconnect; Windows- und Ubuntu-CI.
+- **Lokal optional (nicht CI):** echter ffmpeg gegen lokalen Fake-Sender.
+
+## 12. Nicht prüfbar vor März 2027 (Hardware)
+Akzeptanz von Endlosstrom (FLAC oder WAV) und `audioBroadcast`; Verhalten bei Stille-Einspeisung; Puffer-/Latenzverhalten; Raumkorrektur-Wirkung (nur durch Messung mit UMIK-1/REW).
+
+## 13. Arbeitsschritte E1b (jeweils eigener PR, CI auf Ubuntu und Windows grün)
+1. `StreamingProfile` samt Äquivalenztests (reiner DSP-Code, kein ffmpeg).
+2. ffmpeg-Wrapper (Pfadprüfung, Version/Prüfsumme, Prozessführung, stderr-Bereinigung) mit Fake-Decoder-Tests.
+3. Ringpuffer, Leser- und Verarbeitungs-Thread, Encoder-Schnittstelle, Anbindung an den Live-Handler.
+4. Reconnect-Supervisor mit Budget und Protokoll.
+5. CLI (`--ffmpeg`, `--ffmpeg-sha256`, `--profile`, `--radio-out`, `--no-reconnect`), Doku, Windows-Testlauf mit ZIP.
