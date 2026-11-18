@@ -89,11 +89,34 @@ def check_codec(content_type: str | None) -> tuple[str, str]:
     return mime, ALLOWED_MIMES[mime]
 
 
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Weiterleitungen nur auf http/https ohne Zugangsdaten und nie von https auf http (urllib erlaubt sonst auch ftp)."""
+
+    max_redirections = 5
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urllib.parse.urljoin(req.full_url, newurl)
+        try:
+            target = validate_url(target)
+        except RadioError:
+            raise RadioError("stream_url_invalid",
+                             f"Weiterleitung auf unzulaessiges Ziel abgelehnt ({mask_url(req.full_url)}).") from None
+        if urllib.parse.urlsplit(req.full_url).scheme == "https" and urllib.parse.urlsplit(target).scheme != "https":
+            raise RadioError("stream_url_invalid",
+                             f"Weiterleitung von https auf http abgelehnt ({mask_url(req.full_url)}).")
+        return super().redirect_request(req, fp, code, msg, headers, target)
+
+
+_OPENER = urllib.request.build_opener(_SafeRedirect)
+
+
 def open_stream(url: str, timeout: float = CONNECT_TIMEOUT_S):
     """Quelle oeffnen. Es werden bewusst keine ICY-Metadaten angefordert."""
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
     try:
-        resp = urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - Schema ist vorher auf http/https geprueft
+        resp = _OPENER.open(req, timeout=timeout)  # Schema vorher auf http/https geprueft, Weiterleitungen werden ebenso geprueft
+    except RadioError:
+        raise
     except urllib.error.HTTPError as e:
         raise RadioError("stream_http_error", f"HTTP {e.code} vom Sender ({mask_url(url)}).") from None
     except (urllib.error.URLError, OSError, ValueError) as e:
