@@ -51,7 +51,7 @@ Sender-URL (HTTP/HLS)
   → ffmpeg A (Decoder): AAC/FLAC → PCM (feste Samplerate, 2 Kanäle) über stdout
   → Leser-Thread → Ringpuffer (Reserve gegen Netzschwankungen)
   → Raum-EQ-Block (IIR-Filterkette mit Zustand über Blöcke, Preamp/Headroom)
-  → ffmpeg B (Encoder): PCM → FLAC (Live) über stdout
+  → WAV-Verpackung 24 Bit (Python, kein zweiter Prozess)
   → MediaServer /s/<token> (Live-Stream, E1)
   → KEF Gen1
 ```
@@ -67,29 +67,29 @@ Sender-URL (HTTP/HLS)
   - Audit: Ereignisse (Start, Ergebnis, blockiert) im JSONL-Protokoll; Status-API (E3).
   - **Offen E-11:** Reconnect standardmäßig an (nur Upstream, kein Renderer-Eingriff) oder analog D2 hinter `--enable-repair`?
 - **Puffer und Pegel:** Ringpuffer-Unterlauf → Stille plus Zähler/Ereignis; Überlauf → ältesten Block verwerfen plus Zähler. Zielwerte (Reserve, Latenz) **nur durch Messung im Simulator festlegen**, hier keine Zahlen.
-- **Ausgabeformat zur KEF:** FLAC-Livestream (Annahme, dass die Gen1 einen endlosen FLAC-Strom ohne Länge akzeptiert; **ungeprüft**; Alternative WAV/PCM nur falls FLAC scheitert).
+- **Ausgabeformat zur KEF (entschieden):** WAV, PCM 24 Bit, Endlosstrom mit unbekannter Länge (Annahme, dass die Gen1 das akzeptiert; **ungeprüft**). Kein FLAC.
 
 ## 6. Arbeitspakete
 - **E1 (erledigt, gemergt):** Durchleitung (`kefplayer radio`), MP3-Ablehnung, Favoriten (`name`,`url`), maskierte URLs, Live-DIDL, Wartezeit ohne Zeitgrenze.
 - **E1.1 (erledigt, 18.11.2026):** Anpassung an E-6, Qualitätsprüfung (eigene Messung + optional ffprobe), Auswertung von `expected_codec`/`min_bitrate_kbps`, `kefplayer radio-check`. Standardwerte für offene Punkte: E-10 HE-AAC zulassen und kennzeichnen (`--strict-lc` zum Ablehnen), E-9 Toleranz 5 % bei gemessener Bitrate (Arbeitswert), kleinerer Bitratenwert zählt, kein manuelles Übersteuern (E-14 offen). Tests mit Fake-ffprobe (CI ohne ffmpeg lauffähig), echte ffmpeg-Tests nur wenn vorhanden (Skip).
-- **E1b:** Decoder-/Encoder-Stufe (ffmpeg), blockweiser Raum-EQ mit Zustand, Ringpuffer, Reconnect, Audit. Ebenfalls mit Fake-Decoder-Skript im Simulator.
+- **E1b:** Decoder-Stufe (ffmpeg) mit WAV-Ausgabe, blockweiser Raum-EQ mit Zustand, Ringpuffer, Reconnect, Audit. Ebenfalls mit Fake-Decoder-Skript im Simulator.
 - **E2:** Fehlerkategorien Stream (`stream_unreachable`, `stream_http_error`, `stream_format_unsupported`, `stream_quality_unverified`, `stream_stalled`, `stream_reconnect_exhausted`), D0-Hypothesen, D1 nur Schatten.
 - **E3:** Status-API/Health für Radio, optional ICY-Titelanzeige (E-8).
 - **E5:** GUI-Senderliste (später).
 
 ## 7. Tests und CI
-- Simulator mit Fake-Sender und **Fake-Decoder/Encoder** (kleine Python-Skripte statt ffmpeg), damit Ubuntu- und Windows-CI ohne ffmpeg laufen. **Offen E-13:** ffmpeg in der CI installieren (Windows: Paketmanager) oder nur lokal optional testen?
+- Simulator mit Fake-Sender und **Fake-Decoder** (kleine Python-Skripte statt ffmpeg), damit Ubuntu- und Windows-CI ohne ffmpeg laufen. **Offen E-13:** ffmpeg in der CI installieren (Windows: Paketmanager) oder nur lokal optional testen?
 - Pflichtfälle: Zustand der Filterkette blockweise = am Stück; Stille bei Unterlauf; Reconnect-Budget; Ablehnung MP3/AAC < 192/HE-AAC/unbekannt; Maskierung von URLs in ffmpeg-Fehlerausgaben; Protokoll-Whitelist; kein Zugriff auf `RENDERER_LOCK`.
 
 ## 8. Nicht prüfbar vor März 2027
-Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch die Gen1; Verhalten bei Stille-Einspeisung und Senderabbruch; Latenz-/Pufferverhalten in der Praxis; Raumkorrektur-Wirkung nur durch Messung (UMIK-1/REW, nach März 2027).
+Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen WAV-Strömen (24 Bit) durch die Gen1; Verhalten bei Stille-Einspeisung und Senderabbruch; Latenz-/Pufferverhalten in der Praxis; Raumkorrektur-Wirkung nur durch Messung (UMIK-1/REW, nach März 2027).
 
 ## 9. Offene Entscheidungen (Stand heute)
 - **E-8:** entschieden (18.11.2026): Titelanzeige später in E3, nicht in E1b.
 - **E-9** Toleranz der gemessenen Bitrate; **E-10** nur AAC-LC zulassen?
 - **E-11:** entschieden: Reconnect standardmäßig an (nur Upstream, abschaltbar mit `--no-reconnect`), nicht hinter `--enable-repair`.
 - **E-13:** entschieden: ffmpeg nicht in der CI (Fake-Decoder).
-- **E-15 (offen):** Samplerate/Bittiefe der Ausgabe; **E-16 (offen):** Ausgabe FLAC (zweiter ffmpeg) oder WAV/L16. Siehe `docs/radio-e1b-design.md`.
+- **E-15:** entschieden (18.11.2026, 10:33): Ausgabe mit 24 Bit. **E-16:** entschieden: ohne FLAC, WAV (PCM 24 Bit), kein Encoder-Prozess. Samplerate noch offen (Vorschlag 48 kHz, konfigurierbar). Siehe `docs/radio-e1b-design.md`.
 - Echte, geprüfte **AAC-≥192-/FLAC-URLs** der Startsender (liefert der Nutzer oder die Senderseite; nicht aus Community-Listen übernehmen).
 
 ## 10. Verweise
