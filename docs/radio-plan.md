@@ -1,6 +1,6 @@
 # KEFplayer – Phase E: Internetradio (Plan, Stand 18.11.2026, abgeschlossen für heute)
 
-Status: **E0 abgeschlossen, E1 gemergt (`0df3584`), E1b geplant (noch kein Code).** Alles nur im Simulator entwickelt; **nichts davon ist an einer echten KEF Gen1 geprüft** (Hardware-Tests frühestens März 2027). Annahmen sind als solche markiert.
+Status: **E0 abgeschlossen, E1 gemergt (`0df3584`), E1b Schritte 1–5 gemergt (PR #26–#30: StreamingProfile, ffmpeg-Wrapper, Pipeline, Reconnect-Supervisor, CLI), Schritt 6 (HLS/.m3u8 mit `--ffmpeg`) in Arbeit.** Alles nur im Simulator entwickelt; **nichts davon ist an einer echten KEF Gen1 geprüft** (Hardware-Tests frühestens März 2027). Annahmen sind als solche markiert.
 
 ## 1. Feste Vorgaben (Nutzer, 18.11.2026)
 - **E-1:** Variante B (PC holt den Stream und leitet ihn über den Medienserver an die KEF).

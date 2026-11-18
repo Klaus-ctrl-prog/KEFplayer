@@ -362,6 +362,9 @@ def _print_verdict(name, rep, verdict) -> None:
     print(f"  {name}: {label}: Codec {rep.codec}, {prof}, {br} ({rep.source}){flags}")
     for r in verdict.reasons:
         print(f"    - {r}")
+    for n in rep.notes:
+        if n.startswith("HLS"):
+            print(f"    - {n}")
 
 
 def cmd_radio_check(args) -> int:
@@ -387,7 +390,7 @@ def cmd_radio_check(args) -> int:
             continue
         try:
             _, rep, verdict = radio.quality_gate(url, favorite=fav, ffprobe=args.ffprobe, warmup_s=args.quality_warmup,
-                                                 window_s=args.quality_window, strict_lc=args.strict_lc)
+                                                 window_s=args.quality_window, strict_lc=args.strict_lc, hls_ok=args.hls)
         except radio.RadioError as e:
             rows.append({"name": name, "level": "error", "category": e.category})
             print(f"  {name}: Fehler ({e.category}): {e}")
@@ -434,7 +437,7 @@ def cmd_radio(args) -> int:
             raise radio.RadioError("stream_url_invalid", f"Favorit '{name}' hat noch keine echte URL (Platzhalter).")
         print(f"Pruefe Stream-Qualitaet ({radio.mask_url(url)}), ca. {args.quality_warmup + args.quality_window:.0f} s ...")
         info, rep, verdict = radio.quality_gate(url, favorite=fav, ffprobe=args.ffprobe, warmup_s=args.quality_warmup,
-                                                window_s=args.quality_window, strict_lc=args.strict_lc)
+                                                window_s=args.quality_window, strict_lc=args.strict_lc, hls_ok=e1b)
     except radio.RadioError as e:
         _err(f"Fehler ({e.category}): {e}")
         return 2
@@ -461,15 +464,19 @@ def cmd_radio(args) -> int:
         print(f"Hinweis: die Lautstaerke des Renderers wird nicht veraendert. Radio mit Raum-EQ ueber ffmpeg: {rate} Hz, "
               f"WAV PCM 24 Bit (an echter KEF Gen1 ungeprueft). Reconnect: {'aus' if args.no_reconnect else 'an'}.")
         cached = [verdict]
+        chosen = {"url": info.url}   # HLS: URL der gepruefte Variante (ffmpeg bekommt nie die Master-Playlist)
 
         def gate(u):
             if cached:
                 return cached.pop()
-            return radio.quality_gate(u, favorite=fav, ffprobe=args.ffprobe, warmup_s=args.quality_warmup,
-                                      window_s=args.quality_window, strict_lc=args.strict_lc)[2]
+            i2, _, v2 = radio.quality_gate(u, favorite=fav, ffprobe=args.ffprobe, warmup_s=args.quality_warmup,
+                                           window_s=args.quality_window, strict_lc=args.strict_lc, hls_ok=True)
+            if v2.ok:
+                chosen["url"] = i2.url
+            return v2
 
         def make(u):
-            d = decoder.Decoder(ff, info.url, rate=rate, channels=2)
+            d = decoder.Decoder(ff, chosen["url"], rate=rate, channels=2)
             d.start()
             return d
 
@@ -477,7 +484,7 @@ def cmd_radio(args) -> int:
             player.log.write(ev, **kw)
             _print_radio_event(ev, kw)
 
-        sup = radio_supervisor.RadioSupervisor(info.url, pipeline=pipe, gate=gate, make_decoder=make,
+        sup = radio_supervisor.RadioSupervisor(info.hls_master or info.url, pipeline=pipe, gate=gate, make_decoder=make,
                                                budget=radio_supervisor.ReconnectBudget(), emit=emit,
                                                reconnect=not args.no_reconnect)
     else:
@@ -611,6 +618,7 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("favorites", help="Favoritenliste (JSON)")
     rc.add_argument("--only", help="nur diesen Favoriten pruefen")
     rc.add_argument("--json", action="store_true", help="Ergebnis zusaetzlich als JSON")
+    rc.add_argument("--hls", action="store_true", help="HLS (.m3u8) wie bei 'radio --ffmpeg' pruefen (sonst wird HLS abgelehnt)")
     _quality_args(rc)
     rc.set_defaults(func=cmd_radio_check)
 

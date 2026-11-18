@@ -31,7 +31,7 @@ Sender-URL ─► [Qualitätsprüfung E1.1] ─► ffmpeg (Decoder) ─stdout PC
 - **Herkunft:** nur vom Nutzer installiert; **absoluter Pfad** per `--ffmpeg PFAD` (keine PATH-Suche, kein Standardordner: unter Windows würde die Suche sonst auch das aktuelle Verzeichnis berücksichtigen). Beim Start: Datei vorhanden, `ffmpeg -version` auslesen, Pfad, Version und **SHA-256 der Datei** ins Protokoll; optional `--ffmpeg-sha256` zum Festpinnen (Abweichung = Abbruch). Es wird **nichts heruntergeladen oder ausgeführt, was nicht der Nutzer ausdrücklich angegeben hat**. Windows-Builds sind oft **unsigniert**; Windows Application Control wird **nicht umgangen**: Blockiert sie ffmpeg, meldet E1b „nicht verfügbar“ (E1 bleibt nutzbar, ohne EQ).
 - **Aufruf:** `subprocess` mit Argumentliste, `shell=False`, `stdin=DEVNULL`, `-nostdin`, `-hide_banner`, `-loglevel warning`, `-protocol_whitelist http,https,tcp,tls,crypto`, `-rw_timeout`, `-reconnect*`-Optionen **nicht** verwenden (Reconnect macht der Supervisor, damit er geprüft und gezählt ist), Ausgabe `-f f32le -ac 2 -ar <Rate> pipe:1`.
 - **URL-Hygiene:** URL nur als Argument; in Meldungen und Protokoll maskiert (Schema://Host:Port/...); stderr wird vor dem Speichern bereinigt.
-- **HLS:** ffmpeg wählt die Variante; die **höchste Stufe muss erzwungen** werden (Variantenwahl per Option oder direkter Varianten-URL), und die Qualitätsprüfung gilt für die tatsächlich gewählte Variante. Ob die Sender entsprechende URLs anbieten, ist **nicht belegt**.
+- **HLS:** ffmpeg wählt die Variante; die **höchste Stufe muss erzwungen** werden (Variantenwahl per Option oder direkter Varianten-URL), und die Qualitätsprüfung gilt für die tatsächlich gewählte Variante. Ob die Sender entsprechende URLs anbieten, ist **nicht belegt**. **Umgesetzt in Schritt 6** (`kefplayer/hls.py`): höchste Variante gewählt, ffmpeg bekommt die Varianten-URL, Messung aus den Segment-Nutzdaten, siehe `docs/radio.md`.
 
 ## 5. Raum-EQ im Live-Betrieb (Refactor, noch nicht implementiert)
 Neue Klasse **`StreamingProfile`** (in `dsp.py` oder eigenem Modul), die das vorhandene `Profile` wiederverwendet:
@@ -99,3 +99,4 @@ Akzeptanz eines endlosen WAV-Stroms (24 Bit, unbekannte Länge) und `audioBroadc
 3. Ringpuffer, Leser- und Verarbeitungs-Thread, WAV-Verpackung (24 Bit), Anbindung an den Live-Handler.
 4. Reconnect-Supervisor mit Budget und Protokoll.
 5. CLI (`--ffmpeg`, `--ffmpeg-sha256`, `--profile`, `--no-reconnect`, `--radio-rate`), Doku, Windows-Testlauf mit ZIP.
+6. HLS (`.m3u8`) mit `--ffmpeg`: Variantenwahl, Prüfung der gewählten Variante, `radio-check --hls`.
