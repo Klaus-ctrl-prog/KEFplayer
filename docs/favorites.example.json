@@ -7,7 +7,7 @@
     "min_bitrate_kbps": 192,
     "status": "candidate",
     "verified_at": null,
-    "notes": "Startkandidat. Erwartet AAC 192 kbit/s (Angabe des Nutzers, NICHT belegt). Die Community-Liste ubuntuusers nennt fuer 1LIVE nur MP3 128 kbit/s; eine AAC-192-URL ist noch zu ermitteln und per Stream-Pruefung zu verifizieren."
+    "notes": "Startkandidat. Erwartet AAC 192 kbit/s (Angabe des Nutzers, NICHT belegt). Die Community-Liste ubuntuusers nennt fuer 1LIVE nur MP3 128 kbit/s; eine AAC-192-URL ist noch zu ermitteln und per Stream-Pruefung zu verifizieren. Nutzerhinweis 18.11.2026: HLS-AAC 192 kbit/s laut Verzeichnis (radioko), NICHT belegt; keine offizielle URL gefunden. HLS (.m3u8) kann die E1-Durchleitung nicht (nur direkte Streams), sondern erst E1b ueber ffmpeg."
   },
   {
     "name": "WDR 2",
@@ -17,7 +17,7 @@
     "min_bitrate_kbps": 192,
     "status": "candidate",
     "verified_at": null,
-    "notes": "Startkandidat. Erwartet AAC 192 kbit/s (Angabe des Nutzers, NICHT belegt). Regionale Varianten (Rheinland, Ruhrgebiet ...) sind getrennte Streams; Region waehlen. ubuntuusers nennt dort nur MP3 128 kbit/s."
+    "notes": "Startkandidat. Erwartet AAC 192 kbit/s (Angabe des Nutzers, NICHT belegt). Regionale Varianten (Rheinland, Ruhrgebiet ...) sind getrennte Streams; Region waehlen. ubuntuusers nennt dort nur MP3 128 kbit/s. Nutzerhinweis 18.11.2026: HLS-AAC 192 kbit/s laut Verzeichnis (radioko), NICHT belegt; keine offizielle URL gefunden. HLS (.m3u8) kann die E1-Durchleitung nicht (nur direkte Streams), sondern erst E1b ueber ffmpeg."
   },
   {
     "name": "hr3",

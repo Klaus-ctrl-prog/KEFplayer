@@ -31,8 +31,8 @@ Vorlage: `docs/favorites.example.json` (Liste von Objekten, angelehnt an die str
 
 | Sender | Rolle | Stand |
 |---|---|---|
-| 1LIVE | Startkandidat (erwartet AAC 192) | URL fehlt, nicht verifiziert |
-| WDR 2 | Startkandidat (erwartet AAC 192) | URL fehlt (Region wählen), nicht verifiziert |
+| 1LIVE | Startkandidat (laut Nutzerhinweis HLS-AAC 192, Profil offen) | URL fehlt, nicht belegt; **HLS nur über E1b/ffmpeg**, E1 kann kein HLS |
+| WDR 2 | Startkandidat (laut Nutzerhinweis HLS-AAC 192, Profil offen) | URL fehlt (Region wählen), nicht belegt; **HLS nur über E1b/ffmpeg**, E1 kann kein HLS |
 | hr3 | Startkandidat (adaptives AAC bis 192, höchste Stufe erzwingen) | URL fehlt (Region wählen), nicht verifiziert |
 | ROCK ANTENNE Live, ROCK ANTENNE Classic Rock, ROCK ANTENNE Bayern Classic Rock | zu prüfen | **offizielle URLs eingetragen** (Streamlink-Seiten rockantenne.de / rockantenne.bayern, abgerufen 18.11.2026, `.../stream/aacp`); die Seiten nennen **keine Bitrate**, `aacp` kann HE-AAC bedeuten (nicht belegt); Aufnahme als `verified` erst nach Stream-Prüfung (E-6) |
 | ROCK ANTENNE Österreich Classic Rock | zu prüfen | **offizielle URL eingetragen** (rockantenne.at/empfang/streamlinks, abgerufen 18.11.2026, `.../classic-perlen/stream/aacp`); keine Bitrate genannt, HE-AAC-Risiko wie oben |
