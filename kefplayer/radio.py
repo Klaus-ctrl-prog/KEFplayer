@@ -112,13 +112,19 @@ class StreamInfo:
     url: str
     mime: str
     ext: str
+    hls_master: str | None = None   # nur HLS (E1b): URL der Master-Playlist; ``url`` ist dann die gewaehlte Variante
 
 
-def probe(url: str, timeout: float = CONNECT_TIMEOUT_S) -> StreamInfo:
-    """Einmal verbinden, Inhaltstyp pruefen, wieder schliessen. Es werden keine Audiodaten gelesen."""
+def probe(url: str, timeout: float = CONNECT_TIMEOUT_S, allow_hls: bool = False) -> StreamInfo:
+    """Einmal verbinden, Inhaltstyp pruefen, wieder schliessen. Es werden keine Audiodaten gelesen.
+
+    ``allow_hls`` (nur E1b mit ffmpeg): ein HLS-Inhaltstyp wird gemeldet statt abgelehnt; die Pruefung macht hls.py.
+    """
     url = validate_url(url)
     resp = open_stream(url, timeout)
     try:
+        if allow_hls and normalize_mime(resp.headers.get("Content-Type")) in HLS_MIMES:
+            return StreamInfo(url, normalize_mime(resp.headers.get("Content-Type")), ".m3u8")
         mime, ext = check_codec(resp.headers.get("Content-Type"))
     finally:
         resp.close()
@@ -179,14 +185,23 @@ def is_placeholder(url: str) -> bool:
 
 
 def quality_gate(url: str, *, favorite: dict | None = None, ffprobe: str | None = None,
-                 warmup_s: float = 3.0, window_s: float = 10.0, strict_lc: bool = False):
+                 warmup_s: float = 3.0, window_s: float = 10.0, strict_lc: bool = False, hls_ok: bool = False):
     """Qualitaetspruefung vor der Wiedergabe (E-6). Gibt (StreamInfo, StreamReport, Verdict) zurueck.
 
     Wirft RadioError bei Verbindungs-/Formatfehlern. Das Urteil kann ``rejected`` sein (kein Wurf).
+    ``hls_ok`` (nur mit ffmpeg-Stufe E1b): HLS (.m3u8) wird ueber hls.py geprueft; ``info.url`` ist dann die
+    gewaehlte Variante. Ohne ``hls_ok`` bleibt HLS abgelehnt.
     """
     from . import quality
 
-    info = probe(url)
+    if hls_ok:
+        from . import hls
+        if hls.is_hls_url(url):
+            return hls.hls_gate(url, favorite=favorite, ffprobe=ffprobe, window_s=window_s, strict_lc=strict_lc)
+    info = probe(url, allow_hls=hls_ok)
+    if hls_ok and info.mime in HLS_MIMES:
+        from . import hls
+        return hls.hls_gate(info.url, favorite=favorite, ffprobe=ffprobe, window_s=window_s, strict_lc=strict_lc)
     fav = favorite or {}
     floor = quality.effective_floor(fav.get("min_bitrate_kbps"))
     rep = quality.native_probe(lambda: open_stream(info.url), warmup_s=warmup_s, window_s=window_s)
