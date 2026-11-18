@@ -36,6 +36,8 @@ Vorlage: `docs/favorites.example.json` (Liste von Objekten, angelehnt an die str
 | hr3 | Startkandidat (adaptives AAC bis 192, höchste Stufe erzwingen) | URL fehlt (Region wählen), nicht verifiziert |
 | ROCK ANTENNE Live, ROCK ANTENNE Classic Rock, ROCK ANTENNE Bayern Classic Rock | zu prüfen | **offizielle URLs eingetragen** (Streamlink-Seiten rockantenne.de / rockantenne.bayern, abgerufen 18.11.2026, `.../stream/aacp`); die Seiten nennen **keine Bitrate**, `aacp` kann HE-AAC bedeuten (nicht belegt); Aufnahme als `verified` erst nach Stream-Prüfung (E-6) |
 | ROCK ANTENNE Österreich Classic Rock | zu prüfen | **offizielle URL eingetragen** (rockantenne.at/empfang/streamlinks, abgerufen 18.11.2026, `.../classic-perlen/stream/aacp`); keine Bitrate genannt, HE-AAC-Risiko wie oben |
+| ROCK ANTENNE 70er Rock, 80er Rock, OLDIE ANTENNE (80er/90er) | zu prüfen | **offizielle URLs eingetragen** (rockantenne.de, `.../stream/aacp`); keine Bitrate genannt, HE-AAC-Risiko |
+| Radio Swiss Pop (Pop/Softrock, Schweiz) | zu prüfen | offizielle SRG-Tabelle (broadcast.ch, abgerufen 18.11.2026): 192 kbps, Codec dort als **„aacPlus“ (= HE-AAC)** angegeben, Profil nicht ausdrücklich genannt; bei E-10 (nur AAC-LC) voraussichtlich **abgelehnt**; URL der Tabelle ist `http://` |
 | ANTENNE BAYERN Classic Rock | zu prüfen | URL **vom Nutzer genannt** (`stream.antenne.de/classic-rock-live/stream/aacp`, Herkunft KI-Text); offizielle Seite für mich nicht abrufbar, Adresse **nicht belegt** |
 | MDR JUMP, 80s80s | zu prüfen | nur aufnehmen, wenn AAC ≥ 192 kbit/s oder FLAC tatsächlich verfügbar |
 
@@ -89,3 +91,5 @@ Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch 
 
 ## 10. Verweise
 `docs/radio.md` (E1), `docs/radio-plan.md` (diese Planung auf main), `docs/favorites.example.json`, Projektdokument `claude/phase_e0_befunde.md` (nur im Projekt).
+
+**Aussortiert nach E-6 ohne Messung (laut Nutzerhinweis/Verzeichnissen, nicht von mir belegt):** RADIO BOB! (Verzeichnisse nennen MP3 192; AAC-Zugang niedriger), 0nlineradio Classic Rock (Verzeichnis: MP3 192). Radio 88.6 Classic Rock: AAC-Links noch nicht für 192 kbit/s qualifiziert; keine URL übernommen.
