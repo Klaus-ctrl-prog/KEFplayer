@@ -36,7 +36,6 @@ def test_mask_url_never_raises():
 
 
 @pytest.mark.parametrize("ct,ext", [("audio/aac", ".aac"), ("AUDIO/AACP; charset=x", ".aac"),
-                                    ("audio/ogg", ".ogg"), ("application/ogg", ".ogg"), ("audio/opus", ".opus"),
                                     ("audio/flac", ".flac"), ("audio/mp4", ".m4a")])
 def test_allowed_codecs(ct, ext):
     assert radio.check_codec(ct)[1] == ext
@@ -49,7 +48,9 @@ def test_mp3_is_rejected_by_policy(ct):
     assert e.value.category == "stream_format_unsupported" and "MP3" in str(e.value)
 
 
-@pytest.mark.parametrize("ct", [None, "", "text/html", "audio/x-unknown", "video/mp4"])
+@pytest.mark.parametrize("ct", [None, "", "text/html", "audio/x-unknown", "video/mp4",
+                                "audio/ogg", "application/ogg", "audio/opus",  # E-6: nur AAC und FLAC
+                                "application/vnd.apple.mpegurl", "audio/x-mpegurl"])
 def test_unknown_or_missing_content_type_rejected(ct):
     with pytest.raises(radio.RadioError) as e:
         radio.check_codec(ct)

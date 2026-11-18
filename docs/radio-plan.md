@@ -71,7 +71,7 @@ Sender-URL (HTTP/HLS)
 
 ## 6. Arbeitspakete
 - **E1 (erledigt, gemergt):** Durchleitung (`kefplayer radio`), MP3-Ablehnung, Favoriten (`name`,`url`), maskierte URLs, Live-DIDL, Wartezeit ohne Zeitgrenze.
-- **E1.1:** Anpassung an E-6 (nur FLAC/AAC), ffprobe-Qualitätsprüfung, Auswertung der Favoritenfelder, `kefplayer radio-check`. Tests mit Fake-ffprobe (CI ohne ffmpeg lauffähig), echte ffmpeg-Tests nur wenn vorhanden (Skip).
+- **E1.1 (erledigt, 18.11.2026):** Anpassung an E-6, Qualitätsprüfung (eigene Messung + optional ffprobe), Auswertung von `expected_codec`/`min_bitrate_kbps`, `kefplayer radio-check`. Standardwerte für offene Punkte: E-10 HE-AAC zulassen und kennzeichnen (`--strict-lc` zum Ablehnen), E-9 Toleranz 5 % bei gemessener Bitrate (Arbeitswert), kleinerer Bitratenwert zählt, kein manuelles Übersteuern (E-14 offen). Tests mit Fake-ffprobe (CI ohne ffmpeg lauffähig), echte ffmpeg-Tests nur wenn vorhanden (Skip).
 - **E1b:** Decoder-/Encoder-Stufe (ffmpeg), blockweiser Raum-EQ mit Zustand, Ringpuffer, Reconnect, Audit. Ebenfalls mit Fake-Decoder-Skript im Simulator.
 - **E2:** Fehlerkategorien Stream (`stream_unreachable`, `stream_http_error`, `stream_format_unsupported`, `stream_quality_unverified`, `stream_stalled`, `stream_reconnect_exhausted`), D0-Hypothesen, D1 nur Schatten.
 - **E3:** Status-API/Health für Radio, optional ICY-Titelanzeige (E-8).
