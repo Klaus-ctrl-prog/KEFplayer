@@ -70,6 +70,46 @@
     "notes": "Quelle: offizielle Streamlink-Seite rockantenne.at/empfang/streamlinks (abgerufen 18.11.2026). Die Seite nennt KEINE Bitrate; 'aacp' kann HE-AAC (AAC+) bedeuten (nicht belegt, siehe E-10). Qualitaet erst nach Stream-Pruefung (E-6) zulassen."
   },
   {
+    "name": "ROCK ANTENNE 70er Rock",
+    "url": "https://stream.rockantenne.de/70er-rock/stream/aacp",
+    "genre": "Classic Rock (70er)",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Quelle: offizielle Streamlink-Seite rockantenne.de/rockhoeren/empfang/streamlinks (abgerufen 18.11.2026). Die Seite nennt KEINE Bitrate; 'aacp' kann HE-AAC (AAC+) bedeuten (nicht belegt, siehe E-10). Qualitaet erst nach Stream-Pruefung (E-6) zulassen."
+  },
+  {
+    "name": "ROCK ANTENNE 80er Rock",
+    "url": "https://stream.rockantenne.de/80er-rock/stream/aacp",
+    "genre": "Rock (80er)",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Quelle: offizielle Streamlink-Seite rockantenne.de/rockhoeren/empfang/streamlinks (abgerufen 18.11.2026). Die Seite nennt KEINE Bitrate; 'aacp' kann HE-AAC (AAC+) bedeuten (nicht belegt, siehe E-10). Qualitaet erst nach Stream-Pruefung (E-6) zulassen."
+  },
+  {
+    "name": "OLDIE ANTENNE (80er/90er)",
+    "url": "https://stream.rockantenne.de/oldie-antenne/stream/aacp",
+    "genre": "Pop/Rock/Oldies",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Quelle: offizielle Streamlink-Seite rockantenne.de/rockhoeren/empfang/streamlinks (abgerufen 18.11.2026). Die Seite nennt KEINE Bitrate; 'aacp' kann HE-AAC (AAC+) bedeuten (nicht belegt, siehe E-10). Qualitaet erst nach Stream-Pruefung (E-6) zulassen."
+  },
+  {
+    "name": "Radio Swiss Pop",
+    "url": "http://stream.srg-ssr.ch/srgssr/rsp/aac/192",
+    "genre": "Pop/Softrock",
+    "expected_codec": "aac",
+    "min_bitrate_kbps": 192,
+    "status": "to_verify",
+    "verified_at": null,
+    "notes": "Quelle: offizielle SRG-Tabelle broadcast.ch (links_for_streaming_internetradio_de_fr_it_01.pdf, abgerufen 18.11.2026): Codec dort als 'aacPlus' (= HE-AAC) mit 192 kbps angegeben, AAC-Profil nicht genannt. Falls E-10 (nur AAC-LC) gilt, wuerde dieser Stream voraussichtlich ABGELEHNT; erst die Stream-Pruefung entscheidet. Die URL der Tabelle ist http (nicht https); eine https-Variante ist nicht belegt."
+  },
+  {
     "name": "ANTENNE BAYERN Classic Rock",
     "url": "https://stream.antenne.de/classic-rock-live/stream/aacp",
     "genre": "Classic Rock",
