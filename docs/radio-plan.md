@@ -35,6 +35,7 @@ Vorlage: `docs/favorites.example.json` (Liste von Objekten, angelehnt an die str
 | 1LIVE | Startkandidat (laut Nutzerhinweis HLS-AAC 192, Profil offen) | URL fehlt, nicht belegt; **HLS nur über E1b/ffmpeg**, E1 kann kein HLS |
 | WDR 2 | Startkandidat (laut Nutzerhinweis HLS-AAC 192, Profil offen) | URL fehlt (Region wählen), nicht belegt; **HLS nur über E1b/ffmpeg**, E1 kann kein HLS |
 | hr3 | Startkandidat (adaptives AAC bis 192, höchste Stufe erzwingen) | URL fehlt (Region wählen), nicht verifiziert |
+| SWR3 | vom Nutzer gewünscht (18.11.2026), unabhängig von der Qualität aufgenommen | URL fehlt (nur Verzeichnisse gefunden), E-6-Konformität offen |
 | ROCK ANTENNE Live, ROCK ANTENNE Classic Rock, ROCK ANTENNE Bayern Classic Rock | zu prüfen | **offizielle URLs eingetragen** (Streamlink-Seiten rockantenne.de / rockantenne.bayern, abgerufen 18.11.2026, `.../stream/aacp`); die Seiten nennen **keine Bitrate**, `aacp` kann HE-AAC bedeuten (nicht belegt); Aufnahme als `verified` erst nach Stream-Prüfung (E-6) |
 | ROCK ANTENNE Österreich Classic Rock | zu prüfen | **offizielle URL eingetragen** (rockantenne.at/empfang/streamlinks, abgerufen 18.11.2026, `.../classic-perlen/stream/aacp`); keine Bitrate genannt, HE-AAC-Risiko wie oben |
 | ROCK ANTENNE 70er Rock, 80er Rock, OLDIE ANTENNE (80er/90er) | zu prüfen | **offizielle URLs eingetragen** (rockantenne.de, `.../stream/aacp`); keine Bitrate genannt, HE-AAC-Risiko |
@@ -100,3 +101,5 @@ Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch 
 - **MP3 bleibt aus:** Die bekannten WDR-/1LIVE-/hr3-Adressen der Community-Liste (MP3 128) sind weiterhin **nicht zulässig**. Zulässig wären nur AAC-Streams dieser Sender (z. B. HLS-AAC über E1b), sobald sie belegt sind.
 - E1 (gemergt) lässt weiterhin Ogg/Opus/MP4-Audio zu und prüft keine Bitrate; Angleichung an diese Regel in E1.1.
 - Offene Entscheidungen unverändert: E-8, E-9, E-10, E-11, E-13.
+
+**Hinweis zur Liste (18.11.2026):** Die Liste enthält auf Wunsch des Nutzers alle genannten Sender **unabhängig von der Qualität** (derzeit 15 Einträge, inkl. SWR3; hr3 war bereits enthalten). Ob ein Sender abgespielt wird, entscheidet weiterhin die Prüfung nach E-6; eine Ausnahme dafür ist nicht festgelegt (offen, E-14: Sender trotz Nichterfüllung von E-6 manuell freigeben?).
