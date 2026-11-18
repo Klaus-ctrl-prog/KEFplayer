@@ -26,6 +26,7 @@
 
 ### Behoben
 
+- Radio: Weiterleitungen beim Stream-Abruf (`radio.open_stream`, damit auch HLS-Prüfung) werden geprüft: kein `ftp://`, keine Zugangsdaten im Ziel, nie von https auf http, höchstens 5 Weiterleitungen. Vorher folgte urllib auch `ftp://`-Zielen. Betrifft nur den Abruf zur Qualitätsprüfung; ffmpeg arbeitet mit Protokoll-Whitelist.
 - Test `test_unreachable_upstream_gives_502_not_hang` war ein Race (Protokolleintrag wird nach der Antwort geschrieben); wartet jetzt.
 - D0/D1: Gruppenkollision zwischen Befunden gleichen Codes und Evidenz-Aliasing; Härtung gegen fehlerhafte Kategorien und Eingaben.
 - Health-Monitor: Zustand beim Beenden (`stopping`/`stopped`).
