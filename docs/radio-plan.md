@@ -6,7 +6,8 @@ Status: **E0 abgeschlossen, E1 gemergt (`0df3584`), E1b geplant (noch kein Code)
 - **E-1:** Variante B (PC holt den Stream und leitet ihn über den Medienserver an die KEF).
 - **E-2:** nur eigene Sender-URLs / Favoritenliste (kein Verzeichnis-Scraping).
 - **E-3:** Raum-EQ für Radio (E1b) kommt auf jeden Fall.
-- **E-6 (streng):** zulässig **nur FLAC oder AAC mit mindestens 192 kbit/s**. MP3 sowie AAC unter 192 kbit/s werden abgelehnt. Die tatsächliche Stream-Qualität (Codec, Bitrate) wird **vor** der Wiedergabe auf der KEF verifiziert (ffprobe/ffmpeg).
+- **E-6 (Stand 18.11.2026, 07:35, gelockert durch den Nutzer):** zulässig sind **FLAC** und **AAC ab 128 kbit/s**. **Ziel bleibt AAC ≥ 192 kbit/s** („volle Qualität“); **AAC von 128 bis unter 192 kbit/s** ist zulässig, wird aber in Prüfung und Anzeige als **„reduzierte Qualität“** gekennzeichnet. **AAC unter 128 kbit/s und MP3 (jede Bitrate) werden abgelehnt.** Die Untergrenze 128 und die Zielmarke 192 sind feste Nutzerentscheidungen; das Feld `min_bitrate_kbps` je Favorit darf die Untergrenze nur **anheben**, nicht senken.
+  - Frühere Fassung (nur FLAC oder AAC ≥ 192) ist damit ersetzt. Die Qualitätsprüfung vor dem Start bleibt (ffprobe/ffmpeg). Die tatsächliche Stream-Qualität (Codec, Bitrate) wird **vor** der Wiedergabe auf der KEF verifiziert (ffprobe/ffmpeg).
 - **E-12:** E1b nutzt **ffmpeg als externe Decoder-/Puffer-Stufe** (subprocess) nach dem Prinzip moOde/CamillaDSP: Stream → PCM → Raum-EQ → KEF, mit kontrolliertem Reconnect.
 - Genre-Schwerpunkt der Startliste: Rock, Pop, Classic Rock (keine Klassik).
 
@@ -20,7 +21,7 @@ Ablauf (`kefplayer radio` bzw. eigenes `kefplayer radio-check`):
 3. Zusätzlich **gemessene Bitrate** über ein Zeitfenster (empfangene Bytes ÷ Zeit). Grund: Bei Live-AAC (ADTS) fehlt die Bitrate im Datenstrom oft oder ist nur ein Schätzwert; Server-Header (`icy-br`) sind unzuverlässig und werden nicht als Beleg gewertet.
 4. Entscheidung:
    - FLAC: zulassen (keine Mindestbitrate; Samplerate/Bittiefe protokollieren).
-   - AAC: zulassen nur wenn **Codec = AAC** und (deklarierte Bitrate ≥ 192 kbit/s **oder**, falls nicht deklariert, gemessene Bitrate ≥ 192 kbit/s mit festgelegter Toleranz). Bei Widerspruch zwischen deklariert und gemessen: **ablehnen**, nicht raten.
+   - AAC: zulassen nur wenn **Codec = AAC** und (deklarierte Bitrate **oder**, falls nicht deklariert, gemessene Bitrate) ≥ 128 kbit/s (mit festgelegter Toleranz, E-9). Ab 192 kbit/s „volle Qualität“, von 128 bis unter 192 „reduzierte Qualität“ (zulässig, gekennzeichnet). Bei Widerspruch zwischen deklariert und gemessen: **ablehnen**, nicht raten.
    - Alles andere, unbekannt oder nicht messbar: **ablehnen** mit Kategorie `stream_format_unsupported` bzw. `stream_quality_unverified`. Unbekannt gilt nie als gut.
 5. Erst nach bestandener Prüfung wird `SetAVTransportURI` an die KEF gesendet.
 - **Offene Entscheidungen:** E-9 Toleranz bei der gemessenen Bitrate (Vorschlag: nur ein kleiner Abschlag wegen Messfenster; Wert erst nach Messungen im Simulator festlegen, hier keine Zahl erfunden); E-10 nur **AAC-LC** zulassen und HE-AAC (SBR/PS) ablehnen? (Vorschlag: ja, da HE-AAC bei gleicher Nennbitrate ein Effizienzcodec ist; bitte entscheiden).
@@ -93,3 +94,9 @@ Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch 
 `docs/radio.md` (E1), `docs/radio-plan.md` (diese Planung auf main), `docs/favorites.example.json`, Projektdokument `claude/phase_e0_befunde.md` (nur im Projekt).
 
 **Aussortiert nach E-6 ohne Messung (laut Nutzerhinweis/Verzeichnissen, nicht von mir belegt):** RADIO BOB! (Verzeichnisse nennen MP3 192; AAC-Zugang niedriger), 0nlineradio Classic Rock (Verzeichnis: MP3 192). Radio 88.6 Classic Rock: AAC-Links noch nicht für 192 kbit/s qualifiziert; keine URL übernommen.
+
+## 11. Folgen der Lockerung (Stand 18.11.2026)
+- Direkte AAC-Streams mit 128 bis 191 kbit/s sind jetzt zulässig (gekennzeichnet). Radio Swiss Pop in der 96-kbps-Variante bleibt abgelehnt (< 128); die 192-kbps-Variante hängt an E-10 (HE-AAC „aacPlus“).
+- **MP3 bleibt aus:** Die bekannten WDR-/1LIVE-/hr3-Adressen der Community-Liste (MP3 128) sind weiterhin **nicht zulässig**. Zulässig wären nur AAC-Streams dieser Sender (z. B. HLS-AAC über E1b), sobald sie belegt sind.
+- E1 (gemergt) lässt weiterhin Ogg/Opus/MP4-Audio zu und prüft keine Bitrate; Angleichung an diese Regel in E1.1.
+- Offene Entscheidungen unverändert: E-8, E-9, E-10, E-11, E-13.
