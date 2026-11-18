@@ -1,11 +1,15 @@
 """Radio-Pipeline E1b Schritt 3: Decoder (PCM f32le) -> StreamingProfile -> WAV 24 Bit -> Ringpuffer -> Quelle fuer den MediaServer.
 
-Noch OHNE Reconnect (Schritt 4): Endet der Decoder, endet der Strom. Beruehrt weder Renderer noch RENDERER_LOCK.
+Ohne Supervisor (``supervised=False``): Endet der Decoder, endet der Strom.
+Mit Supervisor (E1b Schritt 4): Endet der Decoder, bleibt der Strom offen (Zustand ``gap``, Verbraucher bekommt
+Stille) bis ``attach_decoder`` einen neuen Decoder liefert oder ``stop``/``finish`` aufgerufen wird.
+Beruehrt weder Renderer noch RENDERER_LOCK.
 Unterlauf: Der Verbraucher bekommt Stille (ANNAHME: die KEF Gen1 bleibt dann verbunden; ungeprueft).
 """
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -28,7 +32,8 @@ class _DecoderLike(Protocol):
 
 @dataclass
 class PipelineStats:
-    state: str = "idle"           # idle | streaming | ended | failed | stopped
+    state: str = "idle"           # idle | streaming | gap | ended | failed | stopped
+    gaps: int = 0
     frames_in: int = 0
     clipped_samples: int = 0
     invalid_samples: int = 0
@@ -39,9 +44,15 @@ class PipelineStats:
 
 
 class RadioPipeline:
-    def __init__(self, decoder: _DecoderLike, profile: Profile, *, rate: int = 48000, channels: int = 2,
-                 buffer_seconds: float = 2.0, block_frames: int = BLOCK_FRAMES):
+    def __init__(self, decoder: _DecoderLike | None, profile: Profile, *, rate: int = 48000, channels: int = 2,
+                 buffer_seconds: float = 2.0, block_frames: int = BLOCK_FRAMES, supervised: bool = False):
         self.decoder = decoder
+        self.supervised = supervised
+        self.last_data = time.monotonic()
+        self.gap_reason: str | None = None
+        self._attach = threading.Event()
+        if decoder is not None:
+            self._attach.set()
         self.rate = rate
         self.channels = channels
         self.block_frames = block_frames
@@ -58,38 +69,82 @@ class RadioPipeline:
         if self._thread is not None:
             raise RuntimeError("Pipeline laeuft bereits")
         with self._lock:
-            self._stats.state = "streaming"
+            self._stats.state = "streaming" if self.decoder is not None else "gap"
         self._thread = threading.Thread(target=self._run, name="radio-reader", daemon=True)
         self._thread.start()
 
-    def _run(self) -> None:
+    def attach_decoder(self, decoder: _DecoderLike) -> None:
+        """Neuen (bereits gestarteten) Decoder uebernehmen. Filterzustand wird geloescht (kein Nachklingen)."""
+        with self._lock:
+            self.decoder = decoder
+            self.dsp.reset()
+            self.last_data = time.monotonic()
+            self.gap_reason = None
+            if self._stats.state == "gap":
+                self._stats.state = "streaming"
+        self._attach.set()
+
+    def finish(self) -> None:
+        """Strom regulaer beenden (z. B. Supervisor gibt auf): Verbraucher bekommt nach dem Rest EOF."""
+        with self._lock:
+            if self._stats.state in ("streaming", "gap"):
+                self._stats.state = "ended"
+        self._stop.set()
+        self._attach.set()
+        self.ring.close()
+
+    def _pump(self, dec) -> str:
+        """Liest, bis der Decoder endet. Rueckgabe: 'eof' | 'stop'."""
         frame_bytes = 4 * self.channels
         want = self.block_frames * frame_bytes
+        while not self._stop.is_set():
+            data = dec.read(want)
+            if not data:
+                return "eof"
+            while len(data) < want:  # volle Bloecke sammeln (Pipe liefert ggf. weniger)
+                more = dec.read(want - len(data))
+                if not more:
+                    break
+                data += more
+            n_frames = len(data) // frame_bytes  # angefangenes Frame am Ende verwerfen
+            if n_frames == 0:
+                return "eof"
+            block = np.frombuffer(data[: n_frames * frame_bytes], dtype="<f4").reshape(n_frames, self.channels)
+            out = self.dsp.process(block.astype(np.float64))
+            raw, clipped, bad = pack_s24le(out)
+            self.ring.put(raw)
+            with self._lock:
+                self.last_data = time.monotonic()
+                self._stats.frames_in += n_frames
+                self._stats.clipped_samples += clipped
+                self._stats.invalid_samples += bad
+            if n_frames * frame_bytes < want:
+                return "eof"
+        return "stop"
+
+    def _run(self) -> None:
+        last = None
         try:
             while not self._stop.is_set():
-                data = self.decoder.read(want)
-                if not data:
-                    break
-                while len(data) < want:  # volle Bloecke sammeln (Pipe liefert ggf. weniger)
-                    more = self.decoder.read(want - len(data))
-                    if not more:
-                        break
-                    data += more
-                n_frames = len(data) // frame_bytes  # angefangenes Frame am Ende verwerfen
-                if n_frames == 0:
-                    break
-                block = np.frombuffer(data[: n_frames * frame_bytes], dtype="<f4").reshape(n_frames, self.channels)
-                out = self.dsp.process(block.astype(np.float64))
-                raw, clipped, bad = pack_s24le(out)
-                self.ring.put(raw)
+                if not self._attach.wait(0.1):
+                    continue
+                self._attach.clear()  # erst loeschen, dann lesen: ein gleichzeitiges attach geht nicht verloren
                 with self._lock:
-                    self._stats.frames_in += n_frames
-                    self._stats.clipped_samples += clipped
-                    self._stats.invalid_samples += bad
-                if n_frames * frame_bytes < want:
+                    dec = self.decoder
+                if dec is None or dec is last:
+                    continue
+                last = dec
+                if self._pump(dec) == "stop":
                     break
+                if not self.supervised:
+                    break
+                with self._lock:  # Luecke: Strom bleibt offen, Verbraucher bekommt Stille
+                    if self._stats.state == "streaming":
+                        self._stats.state = "gap"
+                        self._stats.gaps += 1
+                    self.gap_reason = "decoder_ended"
             with self._lock:
-                if self._stats.state == "streaming":
+                if self._stats.state in ("streaming", "gap"):
                     self._stats.state = "stopped" if self._stop.is_set() else "ended"
         except Exception:  # noqa: BLE001 - Verarbeitungsfehler: Strom beenden, Zustand melden
             with self._lock:
@@ -99,12 +154,15 @@ class RadioPipeline:
 
     def stop(self) -> None:
         self._stop.set()
+        self._attach.set()
         with self._lock:
-            if self._stats.state == "streaming":
+            if self._stats.state in ("streaming", "gap"):
                 self._stats.state = "stopped"
+            dec = self.decoder
         self.ring.close()
         try:
-            self.decoder.stop()
+            if dec is not None:
+                dec.stop()
         finally:
             if self._thread is not None:
                 self._thread.join(timeout=5.0)
