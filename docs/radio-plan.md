@@ -103,3 +103,8 @@ Annahme von `audioBroadcast`, `DLNA.ORG_OP=00` und endlosen FLAC-Strömen durch 
 - Offene Entscheidungen unverändert: E-8, E-9, E-10, E-11, E-13.
 
 **Hinweis zur Liste (18.11.2026):** Die Liste enthält auf Wunsch des Nutzers alle genannten Sender **unabhängig von der Qualität** (derzeit 15 Einträge, inkl. SWR3; hr3 war bereits enthalten). Ob ein Sender abgespielt wird, entscheidet weiterhin die Prüfung nach E-6; eine Ausnahme dafür ist nicht festgelegt (offen, E-14: Sender trotz Nichterfüllung von E-6 manuell freigeben?).
+
+## 12. Urheberrecht und Quellen (Stand 18.11.2026; keine Rechtsberatung)
+- **Nur Wiedergabe, kein Mitschnitt:** Der Stream wird nur im Arbeitsspeicher gepuffert (Ringpuffer) und live an die eigene KEF im Heimnetz geleitet. **Kein Speichern auf Platte, kein Cache, keine Aufzeichnung, keine Weitergabe** an Dritte oder ins Internet. Die Medienserver-Bindung (`--bind`) soll im Heimnetz bleiben.
+- **Verzeichnisdienste (z. B. radio.de):** keine automatische Abfrage, kein Scraping und keine Übernahme von Senderlisten (E-2 bleibt). Die Nutzungsbedingungen von radio.de habe ich **nicht gelesen**; ob und wie deren Daten oder Weiterleitungs-URLs genutzt werden dürfen, ist **ungeprüft**. Vorrang haben die **offiziellen Streamlink-Seiten der Sender**. Wer eine Adresse aus einem Verzeichnis von Hand in die eigene Favoritenliste übernimmt, trägt Quelle und Datum in `notes` ein; sie wird wie jede Nutzer-URL behandelt (Prüfung nach E-6).
+- **Verzeichnis-Weiterleitungen** können Werbung, Tracking-Parameter oder wechselnde Adressen enthalten; URLs werden in Meldungen ohnehin maskiert.
