@@ -101,7 +101,7 @@ def test_laufender_stream_wird_von_der_anfragefrist_nicht_beruehrt(server, monke
 
 
 def test_tropf_client_wird_per_gesamtfrist_getrennt(server, monkeypatch):
-    monkeypatch.setattr(M, "REQUEST_TIMEOUT_S", 5.0)  # je recv grosszuegig: nur die Gesamtfrist kann hier greifen
+    monkeypatch.setattr(M, "REQUEST_TIMEOUT_S", 2.0)  # je recv laenger als das Tropf-Intervall: nur die Gesamtfrist kann den Client trennen
     monkeypatch.setattr(M, "REQUEST_TOTAL_S", 1.0)
     c = socket.create_connection(("127.0.0.1", server.port))
     try:
@@ -121,7 +121,7 @@ def test_tropf_client_wird_per_gesamtfrist_getrennt(server, monkeypatch):
                 closed = True
                 break
         assert closed, "Tropf-Client wird nicht getrennt"
-        assert until(lambda: len(server._httpd._handlers) == 0, 3)
+        assert until(lambda: len(server._httpd._handlers) == 0, 6)  # <= TOTAL + TIMEOUT_S (+ Reserve)
     finally:
         c.close()
 

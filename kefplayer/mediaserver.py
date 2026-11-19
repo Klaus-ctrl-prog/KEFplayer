@@ -19,7 +19,7 @@ from .upnp import DLNA_FEATURES, DLNA_FEATURES_LIVE
 
 HANDLER_JOIN_S = 2.0  # Obergrenze, die stop() auf laufende Handler wartet
 REQUEST_TIMEOUT_S = 15.0  # Frist fuer das Einlesen einer Anfrage (Zeile + Header); danach ohne Frist (Streaming/Range-Antworten)
-REQUEST_TOTAL_S = 30.0  # Gesamtfrist bis die Anfrage (Zeile + Header) vollstaendig ist; gegen Tropf-Clients
+REQUEST_TOTAL_S = 30.0  # Gesamtfrist bis die Anfrage (Zeile + Header) vollstaendig ist; gegen Tropf-Clients. Obergrenze fuer das Freiwerden ~ TOTAL + TIMEOUT_S
 MAX_HANDLERS = 64  # gleichzeitig laufende Handler; darueber wird mit 503 abgewiesen (Arbeitswert, nicht aus Messungen)
 
 
@@ -113,6 +113,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             if self._req_done:
                 return
             try:
+                self.connection.settimeout(0.01)  # portabel: der naechste recv() laeuft sofort ab (Windows weckt ein blockiertes recv per shutdown nicht sicher)
                 self.connection.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
