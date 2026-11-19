@@ -57,6 +57,7 @@ class PipelineStats:
     underruns: int = 0
     overrun_bytes: int = 0
     buffered_bytes: int = 0
+    error_type: str | None = None  # nur Klassenname der Ausnahme bei state=failed (keine Meldung, keine URL)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -93,6 +94,8 @@ class RadioPipeline:
     def attach_decoder(self, decoder: _DecoderLike) -> None:
         """Neuen (bereits gestarteten) Decoder uebernehmen. Filterzustand wird geloescht (kein Nachklingen)."""
         with self._lock:
+            if self._stats.state in ("failed", "ended", "stopped"):
+                raise RuntimeError("Pipeline beendet")
             self.decoder = decoder
             self.dsp.reset()
             self.last_data = time.monotonic()
@@ -163,9 +166,16 @@ class RadioPipeline:
             with self._lock:
                 if self._stats.state in ("streaming", "gap"):
                     self._stats.state = "stopped" if self._stop.is_set() else "ended"
-        except Exception:  # noqa: BLE001 - Verarbeitungsfehler: Strom beenden, Zustand melden
+        except Exception as e:  # noqa: BLE001 - Verarbeitungsfehler: Strom beenden, Zustand melden
             with self._lock:
                 self._stats.state = "failed"
+                self._stats.error_type = type(e).__name__
+                dec = self.decoder
+            try:
+                if dec is not None:
+                    dec.stop(0.5)
+            except Exception:  # noqa: BLE001
+                pass
         finally:
             self.ring.close()
 
