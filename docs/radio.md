@@ -38,5 +38,14 @@ Für ARD-Sender (1LIVE, WDR 2, hr3, SWR3 u. a.), sofern sie AAC per HLS anbieten
 - **Nicht unterstützt:** verschlüsselte Playlists (`EXT-X-KEY`, nicht prüfbar, abgelehnt), CMAF mit mehreren Audiospuren per `EXT-X-MEDIA`, FLAC außerhalb fMP4. HE-AAC lässt sich bei ADTS/fMP4 nur über `CODECS` erkennen (`he_aac_possible` bleibt gesetzt; `--strict-lc` lehnt ab).
 - **Ungeprüft:** kein echter Sender, kein echtes ffmpeg, keine echte KEF. Die Zahl der geladenen Segmente, die Größenlimits und die Annahme, dass TS-PAT/PMT je in einem Paket stehen, sind Arbeitswerte.
 
+### Bekannte Grenzen (Stand 19.11.2026, Simulator)
+
+- **HLS-Abruf (`hls.http_fetch`):** Die Gesamtzeit von 60 s zählt erst nach dem Verbindungsaufbau; dieser ist separat durch `CONNECT_TIMEOUT_S` (10 s) begrenzt, ein Abruf dauert im normalen Ablauf etwa bis 70 s. Das ist ein **Richtwert, keine garantierte Obergrenze**: Das Timeout gilt je Socket-Operation, DNS-Auflösung und bis zu fünf Weiterleitungen (`max_redirections = 5`, je mit eigenem Verbindungsaufbau) können zusätzliche Zeit beanspruchen. Vor jedem Read wird das Socket-Timeout auf die Restzeit gesetzt. Das nutzt ein **internes Attribut** der Antwort (`resp.fp.raw._sock`); fehlt es (andere Python-Version), gilt nur das Socket-Timeout je Read und die Gesamtzeit ist dann nicht garantiert. Geprüft nur mit Python 3.12.
+- **Stopp während der Qualitätsprüfung:** Die Prüfung ist nicht abbrechbar; `RadioSupervisor.stop()` wartet höchstens 10 s. Nach einem Stopp kann kurz noch ein Decoder-Prozess anlaufen. Er wird danach von `pipeline.stop()` bzw. dem Supervisor gestoppt (kein unverwalteter Prozess), ein Prozessstart nach dem Stopp ist aber nicht ausgeschlossen.
+- **Pipeline-Fehler:** Ein Verarbeitungsfehler im Pump-Thread ist endgültig (`decoder_failed`, kein Reconnect, Decoder wird gestoppt); `PipelineStats.error_type` enthält nur den Klassennamen.
+- **Mehrere gleichzeitige GETs** auf denselben Live-Stream teilen sich den Ringpuffer (offen, ob die KEF so etwas tut).
+- **Ende der Quelle:** Der Player erhält kein Signal vom Supervisor. Bleibt der Renderer nach dem Stream-Ende auf `PLAYING`, hängt `kefplayer radio` (offen bis zum Hardware-Test; xfail-Test `test_l5_...`).
+- **MediaServer:** `stop()` wartet höchstens 2 s auf laufende Handler; hängende Handler bleiben Daemon-Threads.
+
 ## Nicht geprüft
 Alles nur im Simulator (lokaler Fake-Sender, `MockRenderer`, Fake-Decoder statt ffmpeg). **Ungeprüft an einer echten KEF Gen1:** ob sie `audioBroadcast`, `DLNA.ORG_OP=00`, den Live-Header-Satz und endlose Antworten ohne Content-Length akzeptiert und puffert; für E1b zusätzlich, ob sie einen endlosen **WAV-24-Bit**-Strom mit unbekannter Länge und die eingefügte Stille akzeptiert. Die DLNA-FLAGS für Live sind aus dem Dateimodus übernommen (Annahme). Hardware-Test frühestens März 2027.
