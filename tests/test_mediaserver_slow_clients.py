@@ -98,3 +98,43 @@ def test_laufender_stream_wird_von_der_anfragefrist_nicht_beruehrt(server, monke
         got += len(r.read(100))
     c.close()
     assert r.status == 200 and got >= 600
+
+
+def test_tropf_client_wird_per_gesamtfrist_getrennt(server, monkeypatch):
+    monkeypatch.setattr(M, "REQUEST_TIMEOUT_S", 5.0)  # je recv grosszuegig: nur die Gesamtfrist kann hier greifen
+    monkeypatch.setattr(M, "REQUEST_TOTAL_S", 1.0)
+    c = socket.create_connection(("127.0.0.1", server.port))
+    try:
+        c.sendall(b"GET /x HTTP/1.1\r\nHost: a\r\nX-")
+        closed = False
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 4:
+            try:
+                c.sendall(b"a")
+                c.settimeout(0.2)
+                if c.recv(1) == b"":
+                    closed = True
+                    break
+            except socket.timeout:
+                pass
+            except OSError:
+                closed = True
+                break
+        assert closed, "Tropf-Client wird nicht getrennt"
+        assert until(lambda: len(server._httpd._handlers) == 0, 3)
+    finally:
+        c.close()
+
+
+def test_hohe_last_503_und_danach_alle_slots_frei(server, monkeypatch):
+    monkeypatch.setattr(M, "REQUEST_TIMEOUT_S", 30.0)
+    monkeypatch.setattr(M, "MAX_HANDLERS", 5)
+    socks = _partial(server.port, 150)
+    try:
+        assert until(lambda: len(server._httpd._handlers) == 5, 3)
+        assert len(server._httpd._handlers) <= 5
+    finally:
+        for c in socks:
+            c.close()
+    assert until(lambda: len(server._httpd._handlers) == 0, 5), "Zaehler bleibt nach Last belegt"
+    assert [_status(server.port) for _ in range(10)] == [404] * 10

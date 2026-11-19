@@ -19,6 +19,7 @@ from .upnp import DLNA_FEATURES, DLNA_FEATURES_LIVE
 
 HANDLER_JOIN_S = 2.0  # Obergrenze, die stop() auf laufende Handler wartet
 REQUEST_TIMEOUT_S = 15.0  # Frist fuer das Einlesen einer Anfrage (Zeile + Header); danach ohne Frist (Streaming/Range-Antworten)
+REQUEST_TOTAL_S = 30.0  # Gesamtfrist bis die Anfrage (Zeile + Header) vollstaendig ist; gegen Tropf-Clients
 MAX_HANDLERS = 64  # gleichzeitig laufende Handler; darueber wird mit 503 abgewiesen (Arbeitswert, nicht aus Messungen)
 
 
@@ -91,10 +92,34 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         except OSError:
             self.close_connection = True
             return
-        super().handle_one_request()
+        # Gesamtfrist: Tropf-Clients (1 Byte pro Intervall) umgehen die Frist je recv(); der Timer trennt sie
+        self._req_lock = threading.Lock()
+        self._req_done = False
+        timer = threading.Timer(REQUEST_TOTAL_S, self._abort_incomplete)
+        timer.daemon = True
+        timer.start()
+        try:
+            super().handle_one_request()
+        finally:
+            self._finish_request_window()
+            timer.cancel()
+
+    def _finish_request_window(self):
+        with self._req_lock:
+            self._req_done = True
+
+    def _abort_incomplete(self):
+        with self._req_lock:
+            if self._req_done:
+                return
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
     def parse_request(self):
         ok = super().parse_request()
+        self._finish_request_window()
         if ok:
             try:
                 self.connection.settimeout(None)
