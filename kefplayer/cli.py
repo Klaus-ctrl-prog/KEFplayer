@@ -409,7 +409,9 @@ def _print_radio_event(ev: str, kw: dict) -> None:
     if ev == "radio_stream_up":
         print("  Radio: Strom laeuft" + (" (wieder verbunden)" if not kw.get("initial") else ""))
     elif ev == "radio_gap":
-        print(f"  Radio: Luecke ({kw.get('reason')}); KEF bekommt Stille")
+        rc = kw.get("decoder_exit")
+        extra = f", Decoder-Exitcode {rc}" if rc not in (None, 0) else ""
+        print(f"  Radio: Luecke ({kw.get('reason')}{extra}); KEF bekommt Stille")
     elif ev == "radio_reconnect_wait":
         print(f"  Radio: neuer Versuch in {kw.get('delay_s'):g} s (Versuch {kw.get('attempt')})")
     elif ev == "radio_failed":

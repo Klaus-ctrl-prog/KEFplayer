@@ -48,11 +48,12 @@ def http_fetch(url: str, max_bytes: int, *, timeout: float = CONNECT_TIMEOUT_S,
         final = resp.geturl() if hasattr(resp, "geturl") else url
         t0 = time.monotonic()
         buf = bytearray()
+        read = getattr(resp, "read1", None) or resp.read  # read1 kehrt nach dem ersten recv zurueck: Deadline greift auch bei tropfenden Servern
         while len(buf) <= max_bytes:
             if time.monotonic() - t0 > deadline_s:
                 raise RadioError("stream_unreachable", f"HLS-Abruf zu langsam ({mask_url(url)}).")
             try:
-                d = resp.read(min(65536, max_bytes + 1 - len(buf)))
+                d = read(min(65536, max_bytes + 1 - len(buf)))
             except OSError as e:
                 raise RadioError("stream_unreachable", f"HLS-Abruf unterbrochen ({mask_url(url)}): {type(e).__name__}.") from None
             if not d:

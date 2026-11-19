@@ -17,6 +17,9 @@ from typing import Callable
 from .upnp import DLNA_FEATURES, DLNA_FEATURES_LIVE
 
 
+HANDLER_JOIN_S = 2.0  # Obergrenze, die stop() auf laufende Handler wartet
+
+
 class RangeNotSatisfiable(Exception):
     pass
 
@@ -214,6 +217,35 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             )
 
 
+class _Server(http.server.ThreadingHTTPServer):
+    """Merkt sich die Handler-Threads, damit stop() sie kurz abwarten kann (daemon_threads trackt sie nicht)."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._handlers: set[threading.Thread] = set()
+        self._handlers_lock = threading.Lock()
+
+    def process_request(self, request, client_address):
+        t = threading.Thread(target=self._run_handler, args=(request, client_address), daemon=True)
+        with self._handlers_lock:
+            self._handlers.add(t)
+        t.start()
+
+    def _run_handler(self, request, client_address):
+        try:
+            self.process_request_thread(request, client_address)
+        finally:
+            with self._handlers_lock:
+                self._handlers.discard(threading.current_thread())
+
+    def join_handlers(self, timeout: float) -> None:
+        end = time.monotonic() + timeout
+        with self._handlers_lock:
+            threads = list(self._handlers)
+        for t in threads:
+            t.join(max(0.0, end - time.monotonic()))
+
+
 class MediaServer:
     def __init__(self, bind: str = "0.0.0.0", port: int = 8765, advertise_host: str | None = None):
         self.bind = bind
@@ -223,12 +255,12 @@ class MediaServer:
         self.streams: dict[str, _StreamEntry] = {}
         self.request_log: list[dict] = []
         self._lock = threading.Lock()
-        self._httpd: http.server.ThreadingHTTPServer | None = None
+        self._httpd: _Server | None = None
         self._thread: threading.Thread | None = None
         self.port = port
 
     def start(self) -> None:
-        self._httpd = http.server.ThreadingHTTPServer((self.bind, self.requested_port), _Handler)
+        self._httpd = _Server((self.bind, self.requested_port), _Handler)
         self._httpd.daemon_threads = True
         self._httpd.media = self
         self.port = self._httpd.server_address[1]
@@ -237,8 +269,10 @@ class MediaServer:
 
     def stop(self) -> None:
         if self._httpd:
-            self._httpd.shutdown()
-            self._httpd.server_close()
+            httpd = self._httpd
+            httpd.shutdown()
+            httpd.server_close()
+            httpd.join_handlers(HANDLER_JOIN_S)  # Handler enden, sobald Token abgemeldet bzw. Verbindung zu ist; haengende bleiben Daemon
             self._httpd = None
 
     def __enter__(self):

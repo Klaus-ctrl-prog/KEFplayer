@@ -134,6 +134,8 @@ class RadioSupervisor:
         except RadioError as e:
             self._set(last_category=e.category, last_error=str(e))
             return e.category
+        if self._stop.is_set():
+            return "stopped"  # Stopp kam waehrend der (nicht abbrechbaren) Pruefung: keinen Decoder mehr starten
         if not verdict.ok:
             # Qualitaet ungenuegend: kein Wiederholen aendert das, daher endgueltig
             self._set(last_category=verdict.category, last_error="; ".join(verdict.reasons))
@@ -161,6 +163,8 @@ class RadioSupervisor:
                 self.emit("radio_connect", source=self.url_masked, attempt=self._stats.attempts + 1, initial=first)
                 self._set(attempts=self._stats.attempts + 1)
                 err = self._connect_once()
+                if self._stop.is_set():
+                    return
                 if err and err.startswith("rejected:"):
                     cat = err.split(":", 1)[1]
                     self._fail(cat, self.stats().last_error or cat)
@@ -177,13 +181,18 @@ class RadioSupervisor:
                     if reason == "failed":
                         self._fail("decoder_failed", f"Verarbeitungsfehler in der Pipeline ({self.pipeline.stats().error_type or 'unbekannt'}).")
                         return
-                    self.emit("radio_gap", source=self.url_masked, reason=reason)
+                    rc, tail = self._decoder_diag()
+                    if rc not in (None, 0):
+                        self._set(last_category="decoder_failed",
+                                  last_error=f"Decoder beendet mit Exitcode {rc}" + (f": {tail}" if tail else ""))
+                    self.emit("radio_gap", source=self.url_masked, reason=reason, decoder_exit=rc, decoder_stderr=tail)
                 elif first and not self.retry_initial:
                     self._fail(err, self.stats().last_error or err)
                     return
                 first = False
                 if not self.reconnect:
-                    self._fail("stream_stalled" if self.stats().last_category == "stream_stalled" else "stream_ended",
+                    cat = self.stats().last_category
+                    self._fail(cat if cat in ("stream_stalled", "decoder_failed") else "stream_ended",
                                "Strom beendet, Reconnect ist abgeschaltet.")
                     return
                 delay, why = self.budget.next_delay()
@@ -197,6 +206,17 @@ class RadioSupervisor:
                     return
         except Exception as e:  # noqa: BLE001 - Supervisor darf nie unbemerkt sterben
             self._fail("decoder_failed", f"Supervisor-Fehler: {type(e).__name__}")
+
+    def _decoder_diag(self) -> tuple[int | None, str]:
+        """Exitcode und letzte stderr-Zeile (bereits URL-bereinigt) des zuletzt angehaengten Decoders."""
+        dec = self.pipeline.decoder
+        if dec is None:
+            return None, ""
+        try:
+            tail = dec.stderr_tail()
+            return dec.poll(), (tail[-1] if tail else "")
+        except Exception:  # noqa: BLE001 - Diagnose darf den Ablauf nie stoeren
+            return None, ""
 
     def _watch(self) -> str:
         """Wartet, bis der Strom endet oder haengt. Beendet haengende Decoder. Rueckgabe: Grund."""
