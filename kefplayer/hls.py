@@ -256,6 +256,8 @@ def ts_demux(data: bytes) -> tuple[int, bytes] | None:
         pid, start, pl = payload(p)
         if pid == 0 and start and len(pl) > 12 and pl[1] == 0x00:
             sec = pl[1 + pl[0]:]
+            if len(sec) < 3:
+                break
             end = 3 + (((sec[1] & 0x0F) << 8) | sec[2]) - 4
             for k in range(8, min(end, len(sec)) - 3, 4):
                 prog, pid2 = struct.unpack(">HH", sec[k:k + 4])
@@ -396,7 +398,10 @@ def analyze_segment(data: bytes, init: bytes = b"") -> SegInfo:
     if data[:4] == b"fLaC":
         return SegInfo("flac", nbytes=len(data))
     if len(data) >= 376 and data[0] == 0x47 and data[188] == 0x47:
-        dm = ts_demux(data)
+        try:
+            dm = ts_demux(data)
+        except (IndexError, struct.error):  # kaputte Tabellen (PAT/PMT): wie "nicht erkennbar" behandeln
+            dm = None
         if dm is None:
             return SegInfo(note="TS ohne erkennbaren Audiostrom")
         st, es = dm

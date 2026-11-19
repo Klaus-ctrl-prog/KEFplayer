@@ -6,6 +6,7 @@ Alle Verbindungen laufen ohne Proxy (Geraetesteuerung im LAN).
 
 from __future__ import annotations
 
+import http.client
 import re
 import socket
 import time
@@ -133,7 +134,10 @@ def http_get(url: str, timeout: float = 5.0) -> bytes:
 
 
 def parse_description(xml_bytes: bytes, location: str) -> DeviceInfo:
-    root = ET.fromstring(xml_bytes)
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        raise UpnpError(None, "Geraetebeschreibung ist kein gueltiges XML") from None
     base = location
     ub = root.find("{*}URLBase")
     if ub is not None and (ub.text or "").strip():
@@ -186,7 +190,10 @@ def parse_fault(data: bytes, http_status: int) -> UpnpError:
 
 
 def parse_response(data: bytes) -> dict[str, str]:
-    root = ET.fromstring(data)
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        raise UpnpError(None, "SOAP-Antwort ist kein gueltiges XML") from None
     body = root.find("{*}Body")
     if body is None or len(body) == 0:
         raise UpnpError(None, "SOAP-Antwort ohne Body")
@@ -344,6 +351,8 @@ class Renderer:
                     data = resp.read()
             except urllib.error.HTTPError as e:
                 raise parse_fault(e.read(), e.code) from None
+            except http.client.HTTPException as e:
+                raise UpnpError(None, f"HTTP-Antwort unvollstaendig ({type(e).__name__})") from None
         return parse_response(data)
 
     # AVTransport

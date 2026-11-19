@@ -48,20 +48,17 @@ BAD_BODIES = [b"<html><body>busy</body>", b"", b"kein xml"]
 
 # ---- L-1: kaputte SOAP-Antworten muessen als UpnpError ankommen (classify_error kennt 'renderer_bad_response') ----
 
-@pytest.mark.xfail(strict=True, reason="L-1: parse_response wirft ParseError statt UpnpError")
 @pytest.mark.parametrize("body", BAD_BODIES)
 def test_l1_parse_response_kaputtes_xml_ist_upnperror(body):
     with pytest.raises(upnp.UpnpError):
         upnp.parse_response(body)
 
 
-@pytest.mark.xfail(strict=True, reason="L-1: parse_description wirft ParseError statt UpnpError")
 def test_l1_parse_description_kaputtes_xml_ist_upnperror():
     with pytest.raises(upnp.UpnpError):
         upnp.parse_description(b"<html><body>busy</body>", "http://127.0.0.1:1/description.xml")
 
 
-@pytest.mark.xfail(strict=True, reason="L-1: abgeschnittene Antwort (IncompleteRead) ist weder UpnpError noch OSError")
 def test_l1_abgeschnittene_antwort_ist_upnperror_oder_oserror(rig, monkeypatch):
     mock, server, player = rig()
     monkeypatch.setattr(upnp._OPENER, "open", lambda req, timeout=None: _Resp(exc=http.client.IncompleteRead(b"<s:Env", 100)))
@@ -69,7 +66,6 @@ def test_l1_abgeschnittene_antwort_ist_upnperror_oder_oserror(rig, monkeypatch):
         player.renderer.transport_state()
 
 
-@pytest.mark.xfail(strict=True, reason="L-1: kaputte SOAP-Antwort bricht die ganze Queue per Ausnahme ab (kein Stop, kein Ergebnis)")
 @pytest.mark.parametrize("body", BAD_BODIES)
 def test_l1_kaputte_antwort_bricht_queue_nicht_ab(rig, tone_factory, monkeypatch, body):
     mock, server, player = rig()
@@ -83,7 +79,6 @@ def test_l1_kaputte_antwort_bricht_queue_nicht_ab(rig, tone_factory, monkeypatch
 
 # ---- L-2: unerwartete Ausnahme -> Aufraeumen (Token abmelden, Renderer stoppen), egal ob sie weiterlaeuft ----
 
-@pytest.mark.xfail(strict=True, reason="L-2: Aufraeumen von play_queue/_play_one liegt nicht in finally")
 def test_l2_queue_raeumt_bei_unerwarteter_ausnahme_auf(rig, tone_factory, monkeypatch):
     mock, server, player = rig()
     a = tone_factory("a", seconds=20.0, fs=8000, subtype="PCM_16")
@@ -105,7 +100,6 @@ def test_l2_queue_raeumt_bei_unerwarteter_ausnahme_auf(rig, tone_factory, monkey
     assert any(act == "Stop" for act, _ in mock.actions), "Renderer spielt weiter"
 
 
-@pytest.mark.xfail(strict=True, reason="L-2: Aufraeumen von play_stream liegt nicht in finally")
 def test_l2_stream_raeumt_bei_unerwarteter_ausnahme_auf(rig, monkeypatch):
     mock, server, player = rig()
     real, n = player.renderer.transport_state, {"c": 0}
