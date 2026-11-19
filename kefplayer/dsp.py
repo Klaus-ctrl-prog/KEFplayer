@@ -133,6 +133,13 @@ class ChannelSpec:
         return not self.filters and self.gain_db == 0 and self.delay_ms == 0
 
 
+def _finite(value, name: str) -> float:
+    v = float(value)
+    if not math.isfinite(v):
+        raise ValueError(f"{name} muss eine endliche Zahl sein (war {value!r})")
+    return v
+
+
 @dataclass
 class Profile:
     name: str = "neutral"
@@ -260,7 +267,7 @@ class Profile:
                 raise ValueError(f"preamp_db muss Zahl oder 'auto' sein (war {pre!r})")
             pre = None
         elif pre is not None:
-            pre = float(pre)
+            pre = _finite(pre, "preamp_db")
         channels: dict[int, ChannelSpec] = {}
         for key, spec in (d.get("channels") or {}).items():
             k = str(key).strip().upper()
@@ -270,8 +277,8 @@ class Profile:
             if bad:
                 raise ValueError(f"Unbekannte Felder in Kanal {key}: {sorted(bad)}")
             channels[CHANNEL_INDEX[k]] = ChannelSpec(
-                gain_db=float(spec.get("gain_db", 0.0)),
-                delay_ms=float(spec.get("delay_ms", 0.0)),
+                gain_db=_finite(spec.get("gain_db", 0.0), f"gain_db (Kanal {key})"),
+                delay_ms=_finite(spec.get("delay_ms", 0.0), f"delay_ms (Kanal {key})"),
                 filters=[_filter_from_dict(x) for x in spec.get("filters", [])],
             )
         return cls(

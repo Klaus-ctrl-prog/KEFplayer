@@ -333,6 +333,10 @@ class Player:
             except (upnp.UpnpError, OSError) as e:
                 res.update({"end_reason": "error", "error": str(e), "error_category": classify_error(e)})
                 self._safe_stop()
+            except BaseException:
+                self._safe_stop()
+                self.server.unregister_stream(token)
+                raise
             res.pop("_t_playing", None)
             res.pop("_t_end", None)
             res["requests"] = [
@@ -384,6 +388,10 @@ class Player:
         except (upnp.UpnpError, OSError) as e:
             res.update({"end_reason": "error", "error": str(e), "error_category": classify_error(e)})
             self._safe_stop()
+        except BaseException:
+            self._safe_stop()
+            self.server.unregister(token)
+            raise
         t_playing = res.pop("_t_playing", None)
         if t_playing is not None and prev_end is not None:
             res["gap_before_s"] = round(t_playing - prev_end, 3)
