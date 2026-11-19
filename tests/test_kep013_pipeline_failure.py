@@ -6,9 +6,8 @@ Decoder, ruft attach_decoder auf (ohne Wirkung, da kein Thread mehr liest) und m
 mehr fliesst. Wiederholt sich bis das Budget erschoepft ist. Die Decoder-Prozesse der fehlgeschlagenen Laeufe werden
 dabei NICHT beendet (pipeline.stop() stoppt nur den zuletzt angehaengten).
 
-Die Tests unten beschreiben das SOLL-Verhalten (Invarianten). Solange KEP-013 offen ist, sind sie xfail(strict=True):
-Sobald der Fehler behoben ist, schlagen sie als XPASS an und die Markierung muss entfernt werden.
-Der Test 'voraussetzung' (nicht xfail) sichert, dass die Fehlereinspeisung die Pipeline wirklich beendet.
+Die Tests unten beschreiben das SOLL-Verhalten (Invarianten). KEP-013 ist behoben (Pipeline-Ende ist endgueltig, Supervisor gibt auf, Decoder werden gestoppt).
+Der Test 'voraussetzung' sichert, dass die Fehlereinspeisung die Pipeline wirklich beendet.
 """
 import time
 
@@ -16,9 +15,6 @@ import pytest
 from test_radio_supervisor import FakeDec, build, until
 
 from kefplayer.radio_supervisor import ReconnectBudget
-
-KEP013 = pytest.mark.xfail(strict=True, reason="KEP-013: Pipeline tot, Supervisor verbindet trotzdem neu")
-
 
 class _BoomRead(FakeDec):
     """Decoder, dessen read() beim zweiten Aufruf eine Ausnahme wirft (Fehler im Pipeline-Thread)."""
@@ -70,7 +66,6 @@ def test_voraussetzung_fehler_beendet_die_pipeline(mode):
         _finish(pipe, sup)
 
 
-@KEP013
 @pytest.mark.parametrize("mode", ["dsp", "read"])
 def test_kein_stream_up_bei_toter_pipeline(mode):
     """I1: 'radio_stream_up' darf nach dem Ausfall der Pipeline nicht erneut gemeldet werden."""
@@ -84,7 +79,6 @@ def test_kein_stream_up_bei_toter_pipeline(mode):
         _finish(pipe, sup)
 
 
-@KEP013
 @pytest.mark.parametrize("mode", ["dsp", "read"])
 def test_keine_weiteren_verbindungsversuche_bei_toter_pipeline(mode):
     """I5: Gate und Decoder-Start laufen nicht weiter, wenn niemand mehr liest (Budget wird nicht verbrannt)."""
@@ -97,7 +91,6 @@ def test_keine_weiteren_verbindungsversuche_bei_toter_pipeline(mode):
         _finish(pipe, sup)
 
 
-@KEP013
 @pytest.mark.parametrize("mode", ["dsp", "read"])
 def test_kein_decoder_leck(mode):
     """I2/I3: Nach Stopp sind ALLE gestarteten Decoder beendet (sonst bleiben ffmpeg-Prozesse uebrig)."""
@@ -110,7 +103,6 @@ def test_kein_decoder_leck(mode):
     assert all(d.stopped.is_set() for d in made), [d.stopped.is_set() for d in made]
 
 
-@KEP013
 @pytest.mark.parametrize("mode", ["dsp", "read"])
 def test_entweder_erholung_oder_klares_ende(mode):
     """I4: Entweder liest die Pipeline wieder (state streaming) oder der Supervisor beendet mit klarer Kategorie.
@@ -129,7 +121,6 @@ def test_entweder_erholung_oder_klares_ende(mode):
 
 # ---- Beleg mit ECHTEN Prozessen (fake_decoder.py als ffmpeg-Ersatz): bleiben Decoder-Prozesse zurueck? ----
 
-@KEP013
 def test_keine_prozesse_bleiben_zurueck_echte_decoder():
     """I2/I3 mit echten Subprozessen. Zeigt, dass das Leck mehr ist als ein Flag im Simulator:
     jeder uebersehene Decoder waere ein laufender ffmpeg mit offener Senderverbindung."""

@@ -143,7 +143,15 @@ class RadioSupervisor:
         except RadioError as e:
             self._set(last_category=e.category, last_error=str(e))
             return e.category
-        self.pipeline.attach_decoder(dec)
+        try:
+            self.pipeline.attach_decoder(dec)
+        except RuntimeError:
+            try:
+                dec.stop(0.5)
+            except Exception:  # noqa: BLE001
+                pass
+            self._set(last_category="decoder_failed", last_error="Pipeline beendet.")
+            return "decoder_failed"
         return None
 
     def _run(self) -> None:
@@ -166,6 +174,9 @@ class RadioSupervisor:
                     if self._stop.is_set():
                         return
                     self.budget.record_stable(self.clock() - t_up)
+                    if reason == "failed":
+                        self._fail("decoder_failed", f"Verarbeitungsfehler in der Pipeline ({self.pipeline.stats().error_type or 'unbekannt'}).")
+                        return
                     self.emit("radio_gap", source=self.url_masked, reason=reason)
                 elif first and not self.retry_initial:
                     self._fail(err, self.stats().last_error or err)

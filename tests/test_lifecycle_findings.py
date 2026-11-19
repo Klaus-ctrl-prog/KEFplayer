@@ -137,7 +137,6 @@ def test_l2_stream_raeumt_bei_unerwarteter_ausnahme_auf(rig, monkeypatch):
 
 # ---- L-3: attach_decoder nach stop() darf keinen Decoder unverwaltet laufen lassen ----
 
-@pytest.mark.xfail(strict=True, reason="L-3: Supervisor haengt nach pipeline.stop() noch einen Decoder an, niemand stoppt ihn")
 def test_l3_decoder_nach_pipeline_stop_wird_gestoppt():
     pipe, sup, events, made, gate_calls = build([FakeDec(5000, hold=True)])
     pipe.start()
