@@ -412,6 +412,8 @@ def _print_radio_event(ev: str, kw: dict) -> None:
         rc = kw.get("decoder_exit")
         extra = f", Decoder-Exitcode {rc}" if rc not in (None, 0) else ""
         print(f"  Radio: Luecke ({kw.get('reason')}{extra}); KEF bekommt Stille")
+        if rc not in (None, 0) and kw.get("decoder_stderr"):
+            print(f"    Decoder: {kw['decoder_stderr']}")
     elif ev == "radio_reconnect_wait":
         print(f"  Radio: neuer Versuch in {kw.get('delay_s'):g} s (Versuch {kw.get('attempt')})")
     elif ev == "radio_failed":

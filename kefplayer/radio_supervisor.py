@@ -191,9 +191,10 @@ class RadioSupervisor:
                     return
                 first = False
                 if not self.reconnect:
-                    cat = self.stats().last_category
-                    self._fail(cat if cat in ("stream_stalled", "decoder_failed") else "stream_ended",
-                               "Strom beendet, Reconnect ist abgeschaltet.")
+                    st = self.stats()
+                    cat = st.last_category
+                    detail = st.last_error if cat == "decoder_failed" and st.last_error else "Strom beendet, Reconnect ist abgeschaltet."
+                    self._fail(cat if cat in ("stream_stalled", "decoder_failed") else "stream_ended", detail)
                     return
                 delay, why = self.budget.next_delay()
                 if delay is None:
