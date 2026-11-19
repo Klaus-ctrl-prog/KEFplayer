@@ -18,6 +18,9 @@ from .upnp import DLNA_FEATURES, DLNA_FEATURES_LIVE
 
 
 HANDLER_JOIN_S = 2.0  # Obergrenze, die stop() auf laufende Handler wartet
+REQUEST_TIMEOUT_S = 15.0  # Frist fuer das Einlesen einer Anfrage (Zeile + Header); danach ohne Frist (Streaming/Range-Antworten)
+REQUEST_TOTAL_S = 30.0  # Gesamtfrist bis die Anfrage (Zeile + Header) vollstaendig ist; gegen Tropf-Clients. Obergrenze fuer das Freiwerden ~ TOTAL + TIMEOUT_S
+MAX_HANDLERS = 64  # gleichzeitig laufende Handler; darueber wird mit 503 abgewiesen (Arbeitswert, nicht aus Messungen)
 
 
 class RangeNotSatisfiable(Exception):
@@ -81,6 +84,49 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *args):
         pass
+
+    def handle_one_request(self):
+        # Anfrage einlesen nur mit Frist (unvollstaendige/langsame Clients), Antworten ohne (Renderer darf pausieren)
+        try:
+            self.connection.settimeout(REQUEST_TIMEOUT_S)
+        except OSError:
+            self.close_connection = True
+            return
+        # Gesamtfrist: Tropf-Clients (1 Byte pro Intervall) umgehen die Frist je recv(); der Timer trennt sie
+        self._req_lock = threading.Lock()
+        self._req_done = False
+        timer = threading.Timer(REQUEST_TOTAL_S, self._abort_incomplete)
+        timer.daemon = True
+        timer.start()
+        try:
+            super().handle_one_request()
+        finally:
+            self._finish_request_window()
+            timer.cancel()
+
+    def _finish_request_window(self):
+        with self._req_lock:
+            self._req_done = True
+
+    def _abort_incomplete(self):
+        with self._req_lock:
+            if self._req_done:
+                return
+            try:
+                self.connection.settimeout(0.01)  # portabel: der naechste recv() laeuft sofort ab (Windows weckt ein blockiertes recv per shutdown nicht sicher)
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def parse_request(self):
+        ok = super().parse_request()
+        self._finish_request_window()
+        if ok:
+            try:
+                self.connection.settimeout(None)
+            except OSError:
+                return False
+        return ok
 
     def do_HEAD(self):
         self._serve(head=True)
@@ -228,7 +274,17 @@ class _Server(http.server.ThreadingHTTPServer):
     def process_request(self, request, client_address):
         t = threading.Thread(target=self._run_handler, args=(request, client_address), daemon=True)
         with self._handlers_lock:
-            self._handlers.add(t)
+            full = len(self._handlers) >= MAX_HANDLERS
+            if not full:
+                self._handlers.add(t)
+        if full:  # kontrolliert abweisen statt weitere Threads zu starten
+            try:
+                request.settimeout(1.0)
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
         t.start()
 
     def _run_handler(self, request, client_address):
