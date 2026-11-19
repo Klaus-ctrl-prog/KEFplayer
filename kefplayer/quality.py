@@ -81,7 +81,9 @@ def evaluate(rep: StreamReport, *, floor_kbps: float = FLOOR_KBPS, target_kbps: 
     if not vals:
         return Verdict("rejected", "stream_quality_unverified", ["Bitrate weder deklariert noch messbar."], flags=flags)
     eff = min(vals)
-    tol = MEASURE_TOLERANCE if rep.declared_kbps is None or eff == rep.measured_kbps else 1.0
+    # Toleranz nur, wenn der massgebliche Wert wirklich nur gemessen ist (nicht deklariert oder deklariert und gleich)
+    measured_only = rep.declared_kbps is None or (rep.measured_kbps is not None and rep.measured_kbps < rep.declared_kbps)
+    tol = MEASURE_TOLERANCE if measured_only else 1.0
     if eff >= target_kbps * tol:
         return Verdict("full", None, [f"AAC {eff:.0f} kbit/s (Ziel {target_kbps:.0f})."], eff, flags)
     if eff >= floor_kbps * tol:
