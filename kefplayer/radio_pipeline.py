@@ -75,7 +75,7 @@ class RadioPipeline:
         self.channels = channels
         self.block_frames = block_frames
         self.dsp = StreamingProfile(profile, rate, channels)
-        self.ring = ByteRing(max(1, int(buffer_seconds * rate * channels * 3)))
+        self.ring = ByteRing(max(1, int(buffer_seconds * rate * channels * 3)), frame_bytes=channels * 3)  # F-03: ganze PCM-Frames
         self._stats = PipelineStats(warnings=list(self.dsp.warnings))
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None

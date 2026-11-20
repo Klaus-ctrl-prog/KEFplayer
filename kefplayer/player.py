@@ -252,6 +252,10 @@ class Player:
                         self._emit("track_end", **res)
                         results.append(res)
                         continue
+                    if self._stop.is_set():  # F-08: Stopp waehrend der Vorbereitung: den Renderer gar nicht erst starten
+                        if self._own_cache and prep.report is not None:
+                            self._remove(prep.path)
+                        break
                     res = self._play_one(i, tr, prep, prev_end)
                     prev_end = res.pop("_t_end", None)
                     results.append(res)

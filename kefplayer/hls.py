@@ -17,6 +17,7 @@ Playlists (``EXT-X-KEY``) sind nicht pruefbar und werden abgelehnt. Nichts wird 
 """
 from __future__ import annotations
 
+import math
 import re
 import struct
 import time
@@ -31,26 +32,48 @@ from .radio import (CONNECT_TIMEOUT_S, HLS_MIMES, RadioError, StreamInfo, mask_u
 HLS_MIME = "application/vnd.apple.mpegurl"
 MAX_PLAYLIST_BYTES = 512 * 1024
 MAX_SEGMENT_BYTES = 6 * 1024 * 1024
+MAX_RANGE_SKIP_BYTES = 4 * MAX_SEGMENT_BYTES   # Arbeitswert: so viel wird bei einem Server ohne Range-Unterstuetzung verworfen
 MAX_SEGMENTS = 10               # hoechstens so viele Segmente werden zur Messung geladen
 MAX_VARIANTS = 64
 FETCH_DEADLINE_S = 60.0         # Gesamtzeit je Abruf (gegen tropfende Server)
 
-Fetch = Callable[[str, int], "tuple[bytes, str]"]   # (url, max_bytes) -> (daten, endgueltige_url)
+Fetch = Callable[..., "tuple[bytes, str]"]   # (url, max_bytes[, byte_range=(offset, laenge)]) -> (daten, endgueltige_url)
 
 
 # ---------------------------------------------------------------- Abruf
 
 def http_fetch(url: str, max_bytes: int, *, timeout: float = CONNECT_TIMEOUT_S,
-               deadline_s: float = FETCH_DEADLINE_S) -> tuple[bytes, str]:
-    """Begrenzter Abruf. Wirft RadioError (Meldungen ohne volle URL)."""
-    resp = open_stream(url, timeout)
+               deadline_s: float = FETCH_DEADLINE_S, byte_range: tuple[int, int] | None = None) -> tuple[bytes, str]:
+    """Begrenzter Abruf. Wirft RadioError (Meldungen ohne volle URL).
+
+    ``byte_range`` = (Offset, Laenge) fuer EXT-X-BYTERANGE: es wird per HTTP-Range nur dieser Bereich angefordert. Ignoriert der
+    Server Range (Status 200), werden die ersten ``Offset`` Bytes verworfen (begrenzt durch MAX_RANGE_SKIP_BYTES).
+    """
+    skip = 0
+    if byte_range is not None:
+        if byte_range[1] > max_bytes:
+            raise RadioError("stream_format_unsupported", f"HLS-Byterange zu gross ({mask_url(url)}).")
+        resp = open_stream(url, timeout, byte_range=byte_range)
+    else:
+        resp = open_stream(url, timeout)
     try:
+        if byte_range is not None:
+            off = byte_range[0]
+            if getattr(resp, "status", 200) == 206:
+                cr = resp.headers.get("Content-Range") if getattr(resp, "headers", None) is not None else None
+                m = re.match(r"\s*bytes\s+(\d+)-(\d+)/", cr or "")
+                if cr and (not m or int(m.group(1)) != off):
+                    raise RadioError("stream_format_unsupported", f"HLS-Byterange: Content-Range passt nicht ({mask_url(url)}).")
+            else:  # Server ignoriert Range und sendet die ganze Ressource
+                if off > MAX_RANGE_SKIP_BYTES:
+                    raise RadioError("stream_format_unsupported", f"HLS-Server ignoriert Range, Offset zu gross ({mask_url(url)}).")
+                skip = off
         final = resp.geturl() if hasattr(resp, "geturl") else url
         t0 = time.monotonic()
         buf = bytearray()
         read = getattr(resp, "read1", None) or resp.read  # read1 kehrt nach dem ersten recv zurueck: Deadline greift auch bei tropfenden Servern
         sock = getattr(getattr(getattr(resp, "fp", None), "raw", None), "_sock", None)  # kann fehlen: dann bleibt nur das Socket-Timeout
-        while len(buf) <= max_bytes:
+        while (len(buf) < byte_range[1]) if byte_range is not None else (len(buf) <= max_bytes):
             remaining = deadline_s - (time.monotonic() - t0)
             if remaining <= 0:
                 raise RadioError("stream_unreachable", f"HLS-Abruf zu langsam ({mask_url(url)}).")
@@ -60,14 +83,24 @@ def http_fetch(url: str, max_bytes: int, *, timeout: float = CONNECT_TIMEOUT_S,
                 except OSError:
                     sock = None
             try:
-                d = read(min(65536, max_bytes + 1 - len(buf)))
+                want = (byte_range[1] - len(buf)) if byte_range is not None else (max_bytes + 1 - len(buf))
+                d = read(min(65536, want + skip))
             except OSError as e:
                 if time.monotonic() - t0 >= deadline_s:
                     raise RadioError("stream_unreachable", f"HLS-Abruf zu langsam ({mask_url(url)}).") from None
                 raise RadioError("stream_unreachable", f"HLS-Abruf unterbrochen ({mask_url(url)}): {type(e).__name__}.") from None
             if not d:
                 break
+            if skip:
+                if len(d) <= skip:
+                    skip -= len(d)
+                    continue
+                d, skip = d[skip:], 0
             buf += d
+        if byte_range is not None:
+            if len(buf) < byte_range[1]:
+                raise RadioError("stream_format_unsupported", f"HLS-Byterange unvollstaendig ({mask_url(url)}).")
+            return bytes(buf[: byte_range[1]]), final
         if len(buf) > max_bytes:
             raise RadioError("stream_format_unsupported", f"HLS-Antwort zu gross ({mask_url(url)}).")
         return bytes(buf), final
@@ -121,16 +154,40 @@ class Variant:
 @dataclass
 class MediaPlaylist:
     segments: list[tuple[str, float]] = field(default_factory=list)   # (url, Dauer s)
+    ranges: list[tuple[int, int] | None] = field(default_factory=list)  # je Segment (Offset, Laenge) aus EXT-X-BYTERANGE, sonst None
     map_url: str | None = None
+    map_range: tuple[int, int] | None = None
+    map_bad: bool = False          # EXT-X-MAP mit ungueltigem BYTERANGE
+    invalid_ranges: int = 0        # Segmente mit ungueltigem/undefiniertem BYTERANGE (werden nicht geladen)
     encrypted: bool = False
     endlist: bool = False
 
 
+MAX_INT_ATTR = 1 << 53   # groesste akzeptierte Zahl (BANDWIDTH usw.); darueber gilt der Wert als ungueltig
+
+
 def _to_int(v: str | None) -> int | None:
-    try:
-        return int(float(v)) if v not in (None, "") else None
-    except ValueError:
+    """Ganzzahl aus einem Playlist-Attribut; ungueltig, nicht endlich, negativ oder zu gross -> None (nie eine Ausnahme)."""
+    if v in (None, ""):
         return None
+    try:
+        f = float(v)
+        if not math.isfinite(f) or f < 0 or f > MAX_INT_ATTR:
+            return None
+        return int(f)
+    except (ValueError, OverflowError):
+        return None
+
+
+_BYTERANGE_RE = re.compile(r"\s*(\d{1,15})(?:@(\d{1,15}))?\s*")
+
+
+def _parse_byterange(s: str | None) -> tuple[int, int | None] | None:
+    """"n[@o]" -> (Laenge, Offset|None); ungueltig (n = 0, Text, negativ) -> None."""
+    m = _BYTERANGE_RE.fullmatch(s or "")
+    if not m or int(m.group(1)) <= 0:
+        return None
+    return int(m.group(1)), (int(m.group(2)) if m.group(2) is not None else None)
 
 
 def parse_playlist(text: str, base_url: str):
@@ -156,6 +213,8 @@ def parse_playlist(text: str, base_url: str):
         return "master", variants
     pl = MediaPlaylist()
     dur: float | None = None
+    pending_range: object = None          # None | "bad" | (Laenge, Offset|None) fuer das naechste Segment
+    next_off: dict[str, int] = {}         # je Ressource: Offset nach dem letzten Teilbereich (implizite Fortsetzung)
     for ln in lines:
         if ln.startswith("#EXTINF:"):
             try:
@@ -163,9 +222,19 @@ def parse_playlist(text: str, base_url: str):
             except ValueError:
                 dur = None
         elif ln.startswith("#EXT-X-MAP:"):
-            u = _attrs(ln.split(":", 1)[1]).get("URI")
+            at = _attrs(ln.split(":", 1)[1])
+            u = at.get("URI")
             if u:
                 pl.map_url = _resolve(base_url, u)
+                if "BYTERANGE" in at:  # eigener Bereich der Initialisierung; beeinflusst die Segment-Offsets nicht
+                    br = _parse_byterange(at["BYTERANGE"])
+                    if br is None or br[1] is None:  # bei EXT-X-MAP ist der Offset Pflicht
+                        pl.map_bad, pl.map_range = True, None
+                    else:
+                        pl.map_range = (br[1], br[0])
+        elif ln.startswith("#EXT-X-BYTERANGE:"):
+            br = _parse_byterange(ln.split(":", 1)[1])
+            pending_range = "bad" if br is None else br
         elif ln.startswith("#EXT-X-KEY:"):
             if _attrs(ln.split(":", 1)[1]).get("METHOD", "NONE").upper() != "NONE":
                 pl.encrypted = True
@@ -173,8 +242,25 @@ def parse_playlist(text: str, base_url: str):
             pl.endlist = True
         elif ln and not ln.startswith("#"):
             if dur is not None and dur > 0:
-                pl.segments.append((_resolve(base_url, ln), dur))
-            dur = None
+                seg_url = _resolve(base_url, ln)
+                rng: tuple[int, int] | None = None
+                if pending_range is not None:
+                    if pending_range == "bad":
+                        pl.invalid_ranges += 1
+                        dur, pending_range = None, None
+                        continue
+                    n, o = pending_range  # type: ignore[misc]
+                    if o is None:
+                        o = next_off.get(seg_url)  # implizit: direkt nach dem vorigen Teilbereich derselben Ressource
+                    if o is None:  # RFC 8216: ohne Vorgaenger undefiniert
+                        pl.invalid_ranges += 1
+                        dur, pending_range = None, None
+                        continue
+                    rng = (o, n)
+                    next_off[seg_url] = o + n
+                pl.segments.append((seg_url, dur))
+                pl.ranges.append(rng)
+            dur, pending_range = None, None
     return "media", pl
 
 
@@ -462,20 +548,31 @@ def check_variant(variant_url: str, *, hint: tuple[str | None, str | None] = (No
     if not pl.segments:
         rep.notes.append("HLS: keine Segmente in der Medien-Playlist.")
         return rep
-    chosen: list[tuple[str, float]] = []
+    if pl.invalid_ranges:
+        rep.notes.append(f"HLS: {pl.invalid_ranges} Segment(e) mit ungueltigem EXT-X-BYTERANGE ignoriert.")
+    if pl.map_bad:
+        rep.notes.append("HLS: EXT-X-MAP mit ungueltigem BYTERANGE; Qualitaet nicht pruefbar.")
+        return rep
+    chosen: list[tuple[str, float, tuple[int, int] | None]] = []
     total = 0.0
-    for seg in reversed(pl.segments):     # neueste zuerst (Live-Fenster laeuft vorn ab)
-        chosen.append(seg)
-        total += seg[1]
+    for (surl, sdur), srng in zip(reversed(pl.segments), reversed(pl.ranges)):   # neueste zuerst (Live-Fenster laeuft vorn ab)
+        chosen.append((surl, sdur, srng))
+        total += sdur
         if total >= window_s or len(chosen) >= MAX_SEGMENTS:
             break
     chosen.reverse()
     init = b""
     if pl.map_url:
-        init, _ = fetch(pl.map_url, MAX_SEGMENT_BYTES)
+        if pl.map_range is not None:
+            init, _ = fetch(pl.map_url, MAX_SEGMENT_BYTES, byte_range=pl.map_range)
+        else:
+            init, _ = fetch(pl.map_url, MAX_SEGMENT_BYTES)
     infos: list[tuple[SegInfo, float]] = []
-    for url, dur in chosen:
-        data, _ = fetch(url, MAX_SEGMENT_BYTES)
+    for url, dur, srng in chosen:
+        if srng is not None:
+            data, _ = fetch(url, MAX_SEGMENT_BYTES, byte_range=srng)
+        else:
+            data, _ = fetch(url, MAX_SEGMENT_BYTES)
         infos.append((analyze_segment(data, init), dur))
     codecs = {i.codec for i, _ in infos}
     for i, _ in infos:

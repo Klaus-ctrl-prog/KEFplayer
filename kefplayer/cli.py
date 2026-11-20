@@ -451,6 +451,9 @@ def cmd_radio(args) -> int:
     except radio.RadioError as e:
         _err(f"Fehler ({e.category}): {e}")
         return 2
+    except KeyboardInterrupt:  # F-09: Abbruch waehrend des Qualitaetschecks: nichts gesendet, kein Traceback
+        print("\nAbgebrochen (waehrend der Qualitaetspruefung; nichts an die KEF gesendet).")
+        return 130
     _print_verdict(name, rep, verdict)
     if not verdict.ok:
         _err(f"Fehler ({verdict.category}): Stream erfuellt die Qualitaetsregel nicht; nichts an die KEF gesendet.")
