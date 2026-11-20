@@ -348,10 +348,11 @@ class MediaServer:
         """Gibt (url, token) zurueck. Die URL endet auf den Dateinamen (manche Renderer lesen die Endung)."""
         path = Path(path)
         name = name or path.name
+        host = self._host()  # zuerst pruefen: bei ungueltigem advertise_host bleibt kein Eintrag zurueck (F-02)
         token = secrets.token_hex(12)
         with self._lock:
             self.entries[token] = _Entry(path, mime, name)
-        return f"http://{self._host()}:{self.port}/m/{token}/{urllib.parse.quote(name)}", token
+        return f"http://{host}:{self.port}/m/{token}/{urllib.parse.quote(name)}", token
 
     def unregister(self, token: str) -> None:
         with self._lock:
@@ -359,10 +360,11 @@ class MediaServer:
 
     def register_stream(self, opener: Callable[[], object], mime: str, name: str) -> tuple[str, str]:
         """Live-Stream registrieren. ``opener`` oeffnet die Quelle erst beim GET des Renderers."""
+        host = self._host()  # F-02: erst pruefen, dann eintragen
         token = secrets.token_hex(12)
         with self._lock:
             self.streams[token] = _StreamEntry(opener, mime, name)
-        return f"http://{self._host()}:{self.port}/s/{token}/{urllib.parse.quote(name)}", token
+        return f"http://{host}:{self.port}/s/{token}/{urllib.parse.quote(name)}", token
 
     def unregister_stream(self, token: str) -> None:
         with self._lock:

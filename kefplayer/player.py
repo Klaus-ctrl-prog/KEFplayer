@@ -26,6 +26,10 @@ from .runlog import RunLog
 # time.monotonic() hat unter Windows mit CPython <= 3.12 nur 15,6 ms Aufloesung (GetTickCount64).
 _clock = time.perf_counter
 
+# F-14: Frist, die ein Renderer nach dem endgueltigen Ende der Radioquelle noch bekommt (Puffer ausspielen),
+# bevor der Player ihn stoppt, wenn er weiter PLAYING meldet. Arbeitswert, nicht aus Messungen an der KEF.
+EOF_GRACE_S = 15.0
+
 AUDIO_EXTS = {".flac", ".wav", ".ogg", ".aif", ".aiff", ".mp3"}
 
 
@@ -312,24 +316,30 @@ class Player:
         except (upnp.UpnpError, OSError) as e:
             self._emit("stop_failed", error=str(e))
 
-    def play_stream(self, opener, mime: str, ext: str, title: str, source: str) -> dict:
+    def play_stream(self, opener, mime: str, ext: str, title: str, source: str, *, source_done=None) -> dict:
         """Live-Stream (Radio) ueber den Medienserver abspielen. ``source`` ist bereits maskiert.
 
         Kein Titelende und keine Zeitgrenze: Ende durch stop(), Fehler oder Stopp des Renderers.
+        ``source_done``: optionaler Rueckruf, der True liefert, wenn die Quelle endgueltig beendet und leer ist. Meldet
+        der Renderer danach laenger als ``EOF_GRACE_S`` weiter PLAYING, stoppt der Player ihn (end_reason "source_ended").
         """
         with upnp.RENDERER_LOCK:
             self.track_active.set()
         try:
             url, token = self.server.register_stream(opener, mime, name=f"{_safe(title)}{ext}")
-            didl = upnp.build_didl(title, url, mime, plain=self.plain, live=True)
-            res: dict = {"title": title, "source": source, "mime": mime, "live": True}
-            self._emit("stream_start", **res)
+            try:  # F-01: ab hier muss jeder Fehler die Registrierung wieder entfernen
+                didl = upnp.build_didl(title, url, mime, plain=self.plain, live=True)
+                res: dict = {"title": title, "source": source, "mime": mime, "live": True}
+                self._emit("stream_start", **res)
+            except BaseException:
+                self.server.unregister_stream(token)
+                raise
             try:
                 with upnp.RENDERER_LOCK:
                     self._call("set_uri", self.renderer.set_uri, url, didl)
                     t_play = _clock()
                     self._call("play", self.renderer.play)
-                res.update(self._wait(t_play, None, live=True))
+                res.update(self._wait(t_play, None, live=True, source_done=source_done))
             except (upnp.UpnpError, OSError) as e:
                 res.update({"end_reason": "error", "error": str(e), "error_category": classify_error(e)})
                 self._safe_stop()
@@ -358,26 +368,30 @@ class Player:
         ext = (upnp.ext_for_format(info.format) if info else None) or prep.path.suffix.lower()
         name = f"{i:03d}_{_safe(track.path.stem)}{ext}"
         url, token = self.server.register(prep.path, prep.mime, name=name)
-        didl = upnp.build_didl(
-            track.title, url, prep.mime,
-            artist=track.artist,
-            duration_s=duration,
-            samplerate=info.samplerate if info else None,
-            channels=info.channels if info else None,
-            bits=info.bits if info else None,
-            size=prep.path.stat().st_size,
-            plain=self.plain,
-        )
-        res: dict = {
-            "index": i,
-            "path": str(track.path),
-            "served": str(prep.path),
-            "processed": prep.report is not None,
-            "mime": prep.mime,
-            "mime_in_sink": prep.in_sink,
-            "served_format": info.to_dict() if info else None,
-        }
-        self._emit("track_start", **res)
+        try:  # F-01: DIDL, Dateigroesse und Start-Rueckruf duerfen die Registrierung nicht zurueckhalten
+            didl = upnp.build_didl(
+                track.title, url, prep.mime,
+                artist=track.artist,
+                duration_s=duration,
+                samplerate=info.samplerate if info else None,
+                channels=info.channels if info else None,
+                bits=info.bits if info else None,
+                size=prep.path.stat().st_size,
+                plain=self.plain,
+            )
+            res: dict = {
+                "index": i,
+                "path": str(track.path),
+                "served": str(prep.path),
+                "processed": prep.report is not None,
+                "mime": prep.mime,
+                "mime_in_sink": prep.in_sink,
+                "served_format": info.to_dict() if info else None,
+            }
+            self._emit("track_start", **res)
+        except BaseException:
+            self.server.unregister(token)
+            raise
         try:
             # URI setzen und Play als zusammengehoerige Startsequenz schuetzen.
             with upnp.RENDERER_LOCK:
@@ -407,8 +421,9 @@ class Player:
         self._emit("track_end", **{k: v for k, v in res.items() if k != "_t_end"})
         return res
 
-    def _wait(self, t_play: float, duration: float | None, *, live: bool = False) -> dict:
+    def _wait(self, t_play: float, duration: float | None, *, live: bool = False, source_done=None) -> dict:
         r = self.renderer
+        eof_since: float | None = None
         t_playing: float | None = None
         last_pos: float | None = None
         paused_total = 0.0
@@ -478,6 +493,18 @@ class Player:
                 if errors >= 5:
                     self._safe_stop()
                     return finish("error", error=str(e), error_category=classify_error(e))
+            if source_done is not None and live:
+                try:
+                    done = bool(source_done())
+                except Exception:  # noqa: BLE001 - ein fehlerhafter Rueckruf darf die Wiedergabe nicht beenden
+                    done = False
+                if not done:
+                    eof_since = None
+                elif eof_since is None:
+                    eof_since = now
+                elif now - eof_since >= EOF_GRACE_S:
+                    self._safe_stop()
+                    return finish("source_ended")
             elapsed = now - t_play - paused_total - ((now - paused_since) if paused_since is not None else 0.0)
             if t_playing is None and elapsed > self.start_timeout_s:
                 self._safe_stop()

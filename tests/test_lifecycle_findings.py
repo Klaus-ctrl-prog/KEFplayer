@@ -143,8 +143,9 @@ def test_l3_decoder_nach_pipeline_stop_wird_gestoppt():
 
 # ---- L-5: cmd_radio muss enden, wenn die Quelle endgueltig beendet ist, auch wenn der Renderer PLAYING meldet ----
 
-@pytest.mark.xfail(strict=True, reason="L-5: kein Signal Supervisor -> Player; haengt bei Renderer, der nach EOF PLAYING bleibt")
-def test_l5_cmd_radio_endet_wenn_quelle_beendet_ist_auch_bei_haengendem_renderer(tmp_path, monkeypatch):
+def test_l5_cmd_radio_endet_wenn_quelle_beendet_ist_auch_bei_haengendem_renderer(tmp_path, monkeypatch):  # F-14 (behoben)
+    from kefplayer import player as _player
+    monkeypatch.setattr(_player, "EOF_GRACE_S", 0.5)
     from conftest import make_tone
     from mock_renderer import MockRenderer
     from radio_helpers import FakeStation
