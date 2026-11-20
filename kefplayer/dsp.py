@@ -124,6 +124,8 @@ class ChannelSpec:
     filters: list[Filter] = field(default_factory=list)
 
     def __post_init__(self):
+        self.gain_db = _finite(self.gain_db, "gain_db")  # F-18: NaN/Inf/Nicht-Zahlen direkt bei der Konstruktion ablehnen
+        self.delay_ms = _finite(self.delay_ms, "delay_ms")
         if abs(self.gain_db) > MAX_CHANNEL_GAIN_DB:
             raise ValueError(f"|gain_db| je Kanal max. {MAX_CHANNEL_GAIN_DB} dB (war {self.gain_db})")
         if not 0 <= self.delay_ms <= MAX_DELAY_MS:
@@ -134,7 +136,12 @@ class ChannelSpec:
 
 
 def _finite(value, name: str) -> float:
-    v = float(value)
+    if isinstance(value, bool):
+        raise ValueError(f"{name} muss eine Zahl sein (war {value!r})")
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} muss eine Zahl sein (war {value!r})") from None
     if not math.isfinite(v):
         raise ValueError(f"{name} muss eine endliche Zahl sein (war {value!r})")
     return v
@@ -147,6 +154,10 @@ class Profile:
     filters: list[Filter] = field(default_factory=list)  # gelten fuer alle Kanaele
     channels: dict[int, ChannelSpec] = field(default_factory=dict)  # 0 = L, 1 = R
     notes: list[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.preamp_db is not None:  # F-18: auch bei direkter Python-Konstruktion
+            self.preamp_db = _finite(self.preamp_db, "preamp_db")
 
     # ---- Aufbau ---------------------------------------------------------
     def is_neutral(self) -> bool:
@@ -257,6 +268,8 @@ class Profile:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Profile":
+        if not isinstance(d, dict):  # F-19: Wurzel muss ein JSON-Objekt sein
+            raise ValueError(f"Profil muss ein JSON-Objekt sein (war {_typename(d)})")
         allowed = {"name", "description", "preamp_db", "filters", "channels"}
         unknown = set(d) - allowed
         if unknown:
@@ -269,22 +282,29 @@ class Profile:
         elif pre is not None:
             pre = _finite(pre, "preamp_db")
         channels: dict[int, ChannelSpec] = {}
-        for key, spec in (d.get("channels") or {}).items():
+        raw_channels = d.get("channels")
+        if raw_channels is None:
+            raw_channels = {}
+        if not isinstance(raw_channels, dict):
+            raise ValueError(f"'channels' muss ein Objekt sein (war {_typename(raw_channels)})")
+        for key, spec in raw_channels.items():
             k = str(key).strip().upper()
             if k not in CHANNEL_INDEX:
                 raise ValueError(f"Unbekannter Kanal {key!r} (erlaubt: L, R)")
+            if not isinstance(spec, dict):
+                raise ValueError(f"Kanal {key} muss ein Objekt sein (war {_typename(spec)})")
             bad = set(spec) - {"gain_db", "delay_ms", "filters"}
             if bad:
                 raise ValueError(f"Unbekannte Felder in Kanal {key}: {sorted(bad)}")
             channels[CHANNEL_INDEX[k]] = ChannelSpec(
                 gain_db=_finite(spec.get("gain_db", 0.0), f"gain_db (Kanal {key})"),
                 delay_ms=_finite(spec.get("delay_ms", 0.0), f"delay_ms (Kanal {key})"),
-                filters=[_filter_from_dict(x) for x in spec.get("filters", [])],
+                filters=_filters_from(spec.get("filters"), f"filters (Kanal {key})"),
             )
         return cls(
             name=str(d.get("name", "profile")),
             preamp_db=pre,
-            filters=[_filter_from_dict(x) for x in d.get("filters", [])],
+            filters=_filters_from(d.get("filters"), "filters"),
             channels=channels,
         )
 
@@ -294,22 +314,40 @@ class Profile:
         text = p.read_text(encoding="utf-8-sig")
         if p.suffix.lower() == ".json":
             d = json.loads(text)
+            if not isinstance(d, dict):  # F-19: vor setdefault pruefen
+                raise ValueError(f"Profil muss ein JSON-Objekt sein (war {_typename(d)})")
             d.setdefault("name", p.stem)
             return cls.from_dict(d)
         return parse_apo(text, name=p.stem)
 
 
+def _typename(v) -> str:
+    return "null" if v is None else type(v).__name__
+
+
+def _filters_from(value, where: str) -> list[Filter]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"'{where}' muss eine Liste sein (war {_typename(value)})")
+    return [_filter_from_dict(x) for x in value]
+
+
 def _filter_from_dict(x: dict) -> Filter:
+    if not isinstance(x, dict):
+        raise ValueError(f"Filtereintrag muss ein Objekt sein (war {_typename(x)})")
     bad = set(x) - {"type", "fc", "gain_db", "q"}
     if bad:
         raise ValueError(f"Unbekannte Filterfelder: {sorted(bad)}")
     if "type" not in x or "fc" not in x:
         raise ValueError(f"Filter braucht mindestens 'type' und 'fc': {x}")
-    kwargs = {"type": x["type"], "fc": float(x["fc"])}
+    if not isinstance(x["type"], str):
+        raise ValueError(f"Filtertyp muss ein Text sein (war {_typename(x['type'])})")
+    kwargs = {"type": x["type"], "fc": _finite(x["fc"], "fc")}
     if "gain_db" in x:
-        kwargs["gain_db"] = float(x["gain_db"])
+        kwargs["gain_db"] = _finite(x["gain_db"], "gain_db")
     if "q" in x:
-        kwargs["q"] = float(x["q"])
+        kwargs["q"] = _finite(x["q"], "q")
     return Filter(**kwargs)
 
 
@@ -322,12 +360,12 @@ def _num(text: str, lineno: int) -> float:
     m = re.search(r"[-+]?\d+(?:[.,]\d+)?", text)
     if not m:
         raise ValueError(f"Zeile {lineno}: Zahl erwartet in {text!r}")
-    return float(m.group(0).replace(",", "."))
+    return _finite(m.group(0).replace(",", "."), f"Zeile {lineno}: Zahl")  # "9"*400 -> inf: ablehnen
 
 
 def _param(rest: str, key: str, lineno: int) -> float | None:
     m = re.search(rf"\b{key}\s+([-+]?\d+(?:[.,]\d+)?)", rest, re.I)
-    return float(m.group(1).replace(",", ".")) if m else None
+    return _finite(m.group(1).replace(",", "."), f"Zeile {lineno}: {key}") if m else None
 
 
 def parse_apo(text: str, name: str = "apo") -> Profile:
