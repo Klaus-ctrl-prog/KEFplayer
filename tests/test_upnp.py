@@ -275,6 +275,13 @@ class _RawServer:
         except OSError:
             pass
         finally:
+            try:  # sauberes Schliessen: ungelesene Request-Daten wuerden unter Windows ein RST ausloesen, das die Antwort ueberholt
+                c.shutdown(_socket.SHUT_WR)
+                c.settimeout(0.2)
+                while c.recv(65536):
+                    pass
+            except OSError:
+                pass
             c.close()
 
     def url(self, path="/d.xml"):
