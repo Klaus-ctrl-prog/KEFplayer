@@ -460,7 +460,7 @@ def test_f06_tropfende_antwort_endet_in_gesamtfrist(phase):
     own = _RawServer(h)
     t0 = _time.monotonic()
     try:
-        with pytest.raises(upnp.UpnpError, match="Zeitlimit"):
+        with pytest.raises(TimeoutError, match="Zeitlimit"):
             upnp.http_get(own.url(), timeout=0.5)
     finally:
         stop.set()

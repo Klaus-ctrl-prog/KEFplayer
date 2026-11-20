@@ -48,12 +48,12 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class _Watchdog:
-    """Gesamtfrist je Anfrage: trennt den Socket, auch wenn jede einzelne Leseoperation knapp unter dem Timeout bleibt."""
+    """Gesamtfrist je Anfrage (ab bestehender Verbindung): trennt den Socket, auch wenn jede einzelne Leseoperation knapp unter dem Timeout bleibt."""
 
     def __init__(self, total_s: float):
         self._lock = threading.Lock()
         self._sock = None
-        self.fired = False
+        self.fired = False  # Frist abgelaufen, waehrend eine Verbindung bestand (Socket getrennt)
         self._timer = threading.Timer(max(0.0, total_s), self._fire)
         self._timer.daemon = True
 
@@ -66,13 +66,17 @@ class _Watchdog:
     def attach(self, sock) -> None:
         with self._lock:
             self._sock = sock
-            if self.fired:
+            if self._expired:
+                self.fired = True
                 self._kill(sock)
+
+    _expired = False
 
     def _fire(self) -> None:
         with self._lock:
-            self.fired = True
-            if self._sock is not None:
+            self._expired = True
+            if self._sock is not None:  # Verbindungsaufbau selbst bleibt beim Timeout je Operation (Fehlerklasse wie bisher)
+                self.fired = True
                 self._kill(self._sock)
 
     @staticmethod
@@ -173,7 +177,7 @@ def _fetch(req: urllib.request.Request, timeout: float) -> tuple[int, bytes]:
             with _OPENER.open(req, timeout=timeout) as resp:
                 status, data = getattr(resp, "status", None) or 200, _read_limited(resp, MAX_RESPONSE_BYTES)
             if wd.fired:  # Socket wurde getrennt: Rumpf kann still abgeschnitten sein (http.client meldet das nicht)
-                raise UpnpError(None, f"Zeitlimit {timeout:g} s ueberschritten (Antwort zu langsam)")
+                raise TimeoutError(f"Zeitlimit {timeout:g} s ueberschritten (Antwort zu langsam)")
             return status, data
         except urllib.error.HTTPError as e:
             try:
@@ -184,8 +188,8 @@ def _fetch(req: urllib.request.Request, timeout: float) -> tuple[int, bytes]:
                 e.close()
             return e.code, body
     except (OSError, http.client.HTTPException):
-        if wd.fired:
-            raise UpnpError(None, f"Zeitlimit {timeout:g} s ueberschritten (Antwort zu langsam)") from None
+        if wd.fired:  # wie ein Socket-Timeout melden (OSError), damit Aufrufer es als Zeitueberschreitung einordnen
+            raise TimeoutError(f"Zeitlimit {timeout:g} s ueberschritten (Antwort zu langsam)") from None
         raise
     finally:
         wd.cancel()
