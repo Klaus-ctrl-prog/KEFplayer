@@ -31,6 +31,7 @@ Beim Befehl `play` ist die API **standardmäßig an** (Entscheidung zur Bestäti
 | *(keine)* | API an, `http://127.0.0.1:8766/api/v1/…`; die API selbst sendet keine Renderer-Abfragen (die Gesundheitsüberwachung schon, siehe unten) |
 | `--no-health` | Gesundheitsüberwachung aus (keine Abfragen im Leerlauf; `/api/v1/health` meldet `enabled: false`) |
 | `--health-interval S` | Abstand der Gesundheitsprüfung, Standard **30 s**, Untergrenze **15 s** |
+| `--health-fail-threshold N` | aufeinanderfolgende Fehlschläge, bis ein gesunder Zustand als Fehler gilt, Standard **2** (1 = sofort, höchstens 10); Meldeverzögerung ≈ (N−1) × Intervall (Arbeitswert) |
 | `--no-api` | API vollständig aus: kein Port, kein Sammler, `kefplayer.api` wird nicht einmal importiert |
 | `--api-port N` | anderer Port (Standard **8766**; 0 = beliebig, der gewählte steht in der Startmeldung) |
 | `--api-live` | Position und Transportstatus per gedrosselter, nur lesender Renderer-Abfrage liefern (siehe „Live-Abfrage“) |

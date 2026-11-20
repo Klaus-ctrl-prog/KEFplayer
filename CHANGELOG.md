@@ -6,6 +6,7 @@
 
 ### Hinzugefügt
 
+- **Health-Hysterese**: `--health-fail-threshold N` (Standard 2, 1 = altes Verhalten). Ein einzelner fehlgeschlagener Probe kippt einen gesunden Zustand nicht mehr in den Fehlerstatus und löst keine Diagnose-/Reparaturentscheidung aus; echte Ausfälle werden um höchstens (N−1) Intervalle später gemeldet (Arbeitswert).
 - **Fehlerklassifikation und Wiederholung** (B1/B2): Fehler beim Vorbereiten und bei Renderer-Aufrufen werden in Kategorien eingeordnet; vorübergehende Fehler werden begrenzt wiederholt.
 - **Gesundheitsprüfung und -überwachung** (C1–C3): neues Modul `kefplayer/health.py` mit Prüfungen für Renderer (HTTP, UPnP), Medienserver und Cache, Kommando `kefplayer health` und ein Hintergrund-Monitor (Standard an, `--no-health` schaltet ihn ab, `--health-interval` Standard 30 s, mindestens 15 s). Der Monitor sendet nie Renderer-Abfragen, während ein Titel spielt. Neuer Endpunkt `/api/v1/health`.
 - **Status-API** (C4): Fehlerkategorien und Befunde in den Endpunkten; Beschreibung in `docs/status-api.md`.
