@@ -111,6 +111,27 @@ def output_path(src: str | Path, dst_dir: str | Path, fmt: str = "FLAC", stem: s
     return Path(dst_dir) / f"{stem or src.stem}.{fmt.lower()}"
 
 
+def process_target_problems(files, targets, *, overwrite: bool) -> list[str]:
+    """Vorabpruefung (F-07): eindeutige Zielnamen (ohne Gross-/Kleinschreibung, wie unter Windows), Quelle != Ziel,
+    vorhandene Zieldateien nur mit overwrite."""
+    problems, seen = [], {}
+    for f, t in zip(files, targets):
+        key = os.path.normcase(str(t.resolve() if t.parent.exists() else t)).casefold()
+        if key in seen:
+            problems.append(f"gleicher Zielname {t.name}: {seen[key]} und {f}")
+        else:
+            seen[key] = f
+        try:
+            same = t.exists() and os.path.samefile(f, t)
+        except OSError:
+            same = False
+        if same:
+            problems.append(f"Ziel ist die Quelldatei selbst: {f}")
+        elif t.exists() and not overwrite:
+            problems.append(f"Zieldatei existiert bereits: {t}")
+    return problems
+
+
 def _same_file(a: Path, b: Path) -> bool:
     try:
         return a.exists() and b.exists() and os.path.samefile(a, b)

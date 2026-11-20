@@ -409,27 +409,33 @@ class Controller:
 
     # ---- Verarbeiten (process) ------------------------------------------------------
     def process(self, out_dir: str, *, fmt: str = "flac", bits: int | None = None, dither: bool = True,
-                numbered: bool = False) -> bool:
+                numbered: bool = False, overwrite: bool = False) -> bool:
         paths = self.playable()
         if not paths:
             self._emit("error", text=texts.ERR_EMPTY_QUEUE)
+            return False
+        # Wie die CLI: Vorabpruefung (doppelte Zielnamen, Quelle == Ziel, vorhandene Dateien), bevor etwas geschrieben wird
+        targets = [audio.output_path(f, out_dir, fmt, f"{n:03d}_{f.stem}" if numbered else None) for n, f in enumerate(paths)]
+        problems = audio.process_target_problems(paths, targets, overwrite=overwrite)
+        if problems:
+            self._emit("error", text=texts.ERR_PROCESS_TARGETS + "\n" + "\n".join(f"  {p}" for p in problems))
             return False
         if not self._begin(STATE_PROCESSING):
             return False
         with self._lock:
             self._cancel_process = False
             profile = self.profile
-        self._spawn("process", self._process_worker, paths, Path(out_dir), profile, fmt, bits, dither, numbered)
+        self._spawn("process", self._process_worker, paths, Path(out_dir), profile, fmt, bits, dither, numbered, overwrite)
         return True
 
-    def _process_worker(self, paths, out_dir, profile, fmt, bits, dither, numbered) -> None:
+    def _process_worker(self, paths, out_dir, profile, fmt, bits, dither, numbered, overwrite=False) -> None:
         ok = failed = 0
         for n, f in enumerate(paths):
             if self._cancel_process:
                 break
             try:
                 rep = audio.process_file(f, out_dir, profile, fmt=fmt, bits=bits, dither=dither,
-                                         stem=f"{n:03d}_{f.stem}" if numbered else None)
+                                         stem=f"{n:03d}_{f.stem}" if numbered else None, overwrite=overwrite)
             except Exception as e:  # noqa: BLE001 - je Datei melden, weiter mit der naechsten (Konzept G6)
                 failed += 1
                 self._emit("process_item", index=n, src=str(f), ok=False, error=str(e))
