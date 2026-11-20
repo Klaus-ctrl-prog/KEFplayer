@@ -6,6 +6,7 @@ Alle Verbindungen laufen ohne Proxy (Geraetesteuerung im LAN).
 
 from __future__ import annotations
 
+import functools
 import http.client
 import re
 import socket
@@ -33,7 +34,73 @@ DLNA_FEATURES = f"DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS={DLNA_FLAGS}"
 # Live-Stream: kein Byte-Seek, kein Zeit-Seek. Die FLAGS sind uebernommen (Annahme, an der Gen1 ungeprueft).
 DLNA_FEATURES_LIVE = f"DLNA.ORG_OP=00;DLNA.ORG_CI=0;DLNA.ORG_FLAGS={DLNA_FLAGS}"
 
-_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+# Vertrauensgrenze (F-06): nur http, keine Userinfo, Ziele nur auf Host/Port der LOCATION, keine Weiterleitungen,
+# Antwortgroesse begrenzt, Zeitlimit auch als Gesamtfrist (gegen tropfende Antworten). Werte sind Arbeitswerte.
+ALLOWED_SCHEMES = ("http",)
+MAX_RESPONSE_BYTES = 1 << 20  # Geraetebeschreibung und SOAP-Antworten
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Weiterleitungen nie folgen: 3xx kommt als HTTPError beim Aufrufer an."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+class _Watchdog:
+    """Gesamtfrist je Anfrage: trennt den Socket, auch wenn jede einzelne Leseoperation knapp unter dem Timeout bleibt."""
+
+    def __init__(self, total_s: float):
+        self._lock = threading.Lock()
+        self._sock = None
+        self.fired = False
+        self._timer = threading.Timer(max(0.0, total_s), self._fire)
+        self._timer.daemon = True
+
+    def start(self) -> None:
+        self._timer.start()
+
+    def cancel(self) -> None:
+        self._timer.cancel()
+
+    def attach(self, sock) -> None:
+        with self._lock:
+            self._sock = sock
+            if self.fired:
+                self._kill(sock)
+
+    def _fire(self) -> None:
+        with self._lock:
+            self.fired = True
+            if self._sock is not None:
+                self._kill(self._sock)
+
+    @staticmethod
+    def _kill(sock) -> None:
+        try:
+            sock.settimeout(0.01)  # portabel: der naechste recv() laeuft sofort ab
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+
+class _TrackedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, *args, _kp_watchdog: _Watchdog | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._kp_watchdog = _kp_watchdog
+
+    def connect(self):
+        super().connect()
+        if self._kp_watchdog is not None:
+            self._kp_watchdog.attach(self.sock)
+
+
+class _TrackingHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(functools.partial(_TrackedHTTPConnection, _kp_watchdog=getattr(req, "_kp_watchdog", None)), req)
+
+
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect, _TrackingHTTPHandler)
 
 
 class UpnpError(Exception):
@@ -47,7 +114,93 @@ def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
+# ---- URL-Pruefung ----------------------------------------------------------------
+
+
+def _endpoint(p: urllib.parse.SplitResult) -> tuple[str, int]:
+    return (p.hostname or "").lower(), p.port or 80
+
+
+def check_url(url: str, *, what: str = "URL", anchor: str | None = None) -> str:
+    """Prueft Schema (nur http), Host, Port und Userinfo. Mit anchor muss Host und Port dem anchor entsprechen."""
+    if not isinstance(url, str) or not url or any(ord(c) < 33 or ord(c) == 127 for c in url):
+        raise UpnpError(None, f"{what} ungueltig (leer oder mit Steuer-/Leerzeichen)")
+    try:
+        p = urllib.parse.urlsplit(url)
+        p.port  # wirft ValueError bei ungueltigem Port
+    except ValueError:
+        raise UpnpError(None, f"{what} ungueltig (Aufbau oder Port)") from None
+    if p.scheme.lower() not in ALLOWED_SCHEMES:
+        raise UpnpError(None, f"{what}: Schema {p.scheme or '(keins)'!r} nicht erlaubt (nur http)")
+    if "@" in p.netloc:
+        raise UpnpError(None, f"{what}: Benutzerinformationen in der URL nicht erlaubt")
+    if not p.hostname:
+        raise UpnpError(None, f"{what}: Host fehlt")
+    if anchor is not None and _endpoint(p) != _endpoint(urllib.parse.urlsplit(anchor)):
+        raise UpnpError(None, f"{what} zeigt auf einen anderen Host/Port als die Geraetebeschreibung")
+    return url
+
+
+def _read_limited(resp, limit: int) -> bytes:
+    getheader = getattr(resp, "getheader", None)
+    cl = getheader("Content-Length") if callable(getheader) else None
+    if cl and cl.strip().isdigit() and int(cl) > limit:
+        raise UpnpError(None, f"Antwort zu gross (Content-Length {int(cl)} > {limit} Byte)")
+    try:
+        buf = bytearray()
+        while True:
+            chunk = resp.read(min(65536, limit + 1 - len(buf)))
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > limit:
+                raise UpnpError(None, f"Antwort zu gross (> {limit} Byte)")
+        return bytes(buf)
+    except TypeError:  # einfache Antwortobjekte ohne read(n)
+        data = resp.read()
+        if len(data) > limit:
+            raise UpnpError(None, f"Antwort zu gross (> {limit} Byte)") from None
+        return data
+
+
+def _fetch(req: urllib.request.Request, timeout: float) -> tuple[int, bytes]:
+    """(HTTP-Status, Rumpf). 3xx/4xx/5xx kommen als Status zurueck (Rumpf ebenfalls begrenzt)."""
+    wd = _Watchdog(timeout)
+    req._kp_watchdog = wd
+    wd.start()
+    try:
+        try:
+            with _OPENER.open(req, timeout=timeout) as resp:
+                status, data = getattr(resp, "status", None) or 200, _read_limited(resp, MAX_RESPONSE_BYTES)
+            if wd.fired:  # Socket wurde getrennt: Rumpf kann still abgeschnitten sein (http.client meldet das nicht)
+                raise UpnpError(None, f"Zeitlimit {timeout:g} s ueberschritten (Antwort zu langsam)")
+            return status, data
+        except urllib.error.HTTPError as e:
+            try:
+                body = _read_limited(e, MAX_RESPONSE_BYTES)
+            except (OSError, http.client.HTTPException):
+                body = b""
+            finally:
+                e.close()
+            return e.code, body
+    except (OSError, http.client.HTTPException):
+        if wd.fired:
+            raise UpnpError(None, f"Zeitlimit {timeout:g} s ueberschritten (Antwort zu langsam)") from None
+        raise
+    finally:
+        wd.cancel()
+
+
 # ---- SSDP ---------------------------------------------------------------------
+
+
+def ssdp_location_trusted(location: str | None, sender_ip: str) -> bool:
+    """LOCATION muss eine erlaubte URL sein und auf die Absender-IP der SSDP-Antwort zeigen."""
+    try:
+        p = urllib.parse.urlsplit(check_url(location or "", what="LOCATION"))
+    except UpnpError:
+        return False
+    return (p.hostname or "").lower() == (sender_ip or "").lower()
 
 
 def parse_ssdp_response(data: bytes) -> dict | None:
@@ -92,7 +245,7 @@ def ssdp_search(timeout: float = 3.0, st: str = ST_RENDERER, addr=SSDP_ADDR, bin
             except (socket.timeout, ConnectionResetError):
                 continue
             r = parse_ssdp_response(data)
-            if r and r.get("location"):
+            if r and r.get("location") and ssdp_location_trusted(r["location"], src[0]):
                 r["_from"] = src[0]
                 found.setdefault(r["location"], r)
         return list(found.values())
@@ -128,9 +281,14 @@ class DeviceInfo:
 
 
 def http_get(url: str, timeout: float = 5.0) -> bytes:
+    """GET ohne Weiterleitungen, Rumpf begrenzt, timeout gilt je Operation und als Gesamtfrist."""
+    check_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with _OPENER.open(req, timeout=timeout) as resp:
-        return resp.read()
+    status, data = _fetch(req, timeout)
+    if not 200 <= status < 300:
+        msg = "Weiterleitung nicht erlaubt" if 300 <= status < 400 else "HTTP-Fehler"
+        raise urllib.error.HTTPError(url, status, msg, None, None)
+    return data
 
 
 def parse_description(xml_bytes: bytes, location: str) -> DeviceInfo:
@@ -138,10 +296,11 @@ def parse_description(xml_bytes: bytes, location: str) -> DeviceInfo:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError:
         raise UpnpError(None, "Geraetebeschreibung ist kein gueltiges XML") from None
+    check_url(location, what="LOCATION")
     base = location
     ub = root.find("{*}URLBase")
     if ub is not None and (ub.text or "").strip():
-        base = ub.text.strip()
+        base = check_url(ub.text.strip(), what="URLBase", anchor=location)
     dev = root.find(".//{*}device")
     if dev is None:
         raise UpnpError(None, "Geraetebeschreibung ohne <device>")
@@ -163,12 +322,16 @@ def parse_description(xml_bytes: bytes, location: str) -> DeviceInfo:
             continue
         d = {_local(c.tag): (c.text or "").strip() for c in s}
         if d.get("serviceType") and d.get("controlURL"):
+
+            def join(key):
+                return check_url(urllib.parse.urljoin(base, d[key]), what=key, anchor=location) if d.get(key) else None
+
             info.services[d["serviceType"]] = Service(
                 type=d["serviceType"],
                 id=d.get("serviceId", ""),
-                control_url=urllib.parse.urljoin(base, d["controlURL"]),
-                event_url=urllib.parse.urljoin(base, d["eventSubURL"]) if d.get("eventSubURL") else None,
-                scpd_url=urllib.parse.urljoin(base, d["SCPDURL"]) if d.get("SCPDURL") else None,
+                control_url=join("controlURL"),
+                event_url=join("eventSubURL"),
+                scpd_url=join("SCPDURL"),
             )
     return info
 
@@ -323,6 +486,7 @@ class Renderer:
 
     @classmethod
     def from_location(cls, location: str, timeout: float = 8.0) -> "Renderer":
+        check_url(location, what="Renderer-URL")  # auch die direkt gewaehlte URL: nur http, keine Userinfo
         info = parse_description(http_get(location, timeout), location)
         return cls(info, timeout)
 
@@ -334,6 +498,7 @@ class Renderer:
 
     def soap(self, service_type: str, action: str, args: dict[str, str] | None = None) -> dict[str, str]:
         svc = self._svc(service_type)
+        check_url(svc.control_url, what="controlURL", anchor=self.info.location or None)
         req = urllib.request.Request(
             svc.control_url,
             data=build_envelope(service_type, action, args or {}),
@@ -347,12 +512,11 @@ class Renderer:
         # Auch getrennte Renderer-Objekte duerfen keine parallelen SOAP-Aufrufe senden.
         with RENDERER_LOCK:
             try:
-                with _OPENER.open(req, timeout=self.timeout) as resp:
-                    data = resp.read()
-            except urllib.error.HTTPError as e:
-                raise parse_fault(e.read(), e.code) from None
+                status, data = _fetch(req, self.timeout)
             except http.client.HTTPException as e:
                 raise UpnpError(None, f"HTTP-Antwort unvollstaendig ({type(e).__name__})") from None
+        if not 200 <= status < 300:
+            raise parse_fault(data, status)
         return parse_response(data)
 
     # AVTransport
