@@ -142,7 +142,9 @@ class HealthMonitor:
     * Hysterese: ein einzelner Fehlschlag kippt einen gesunden Zustand nicht (``fail_threshold`` aufeinanderfolgende
       Fehlschlaege noetig, Standard ``DEFAULT_FAIL_THRESHOLD``). Bis dahin bleibt der alte Zustand stehen, im Snapshot
       steht ``pending_failures``. Jedes Ergebnis ausser "error" setzt den Zaehler zurueck. Ein erster Messwert (kein
-      Vorzustand) und ein Wechsel aus "unknown" werden sofort gemeldet; "warn"/"unknown" sind nie verzoegert.
+      Vorzustand), ein Wechsel aus "unknown"/"error" und jedes Ergebnis "warn"/"unknown"/"ok" werden sofort gemeldet.
+      Verzoegert wird nur der Wechsel nach "error", und zwar aus "ok" UND aus "warn" (warn -> error braucht ebenfalls
+      ``fail_threshold`` Fehlschlaege in Folge; das "previous" des Ereignisses ist dann "warn").
     """
 
     def __init__(self, emit, *, info=None, server=None, cache_dir=None, busy=None, interval_s: float = DEFAULT_INTERVAL_S,

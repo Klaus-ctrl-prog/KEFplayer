@@ -582,6 +582,42 @@ def test_first_observation_and_unknown_are_not_delayed(env):
     assert ch["media_server"]["status"] == "error" and ch["media_server"]["previous"] is None
 
 
+def test_hysteresis_semantics_ok_warn_error_unknown(env):
+    """Festgelegte Semantik: nur der Wechsel nach error ist verzoegert (aus ok und aus warn); alles andere sofort."""
+    m = _mon(env)
+
+    def res(st, ts):
+        return {"component": "cache", "status": st, "category": "cache", "message": "x", "evidence": None,
+                "latency_ms": None, "ts": ts}
+
+    def seq(*states):
+        env[4].clear()
+        for i, st in enumerate(states):
+            m._update(res(st, float(i)))
+        return [(c["previous"], c["status"]) for c in _changes(env[4]) if c["component"] == "cache"]
+
+    assert seq("ok", "warn") == [(None, "ok"), ("ok", "warn")]  # warn wird sofort gemeldet
+    assert m._state["cache"]["status"] == "warn"
+    env[4].clear()
+    m._update(res("error", 10.0))  # warn -> error: erster Fehlschlag gehalten
+    assert _changes(env[4]) == [] and m._state["cache"]["status"] == "warn"
+    assert m._state["cache"]["pending_failures"] == 1
+    m._update(res("error", 11.0))  # zweiter in Folge: error, previous = warn
+    assert [(c["previous"], c["status"]) for c in _changes(env[4])] == [("warn", "error")]
+    # aus unknown sofort
+    m2 = _mon(env)
+    env[4].clear()
+    m2._update(res("unknown", 0.0))
+    m2._update(res("error", 1.0))
+    assert [(c["previous"], c["status"]) for c in _changes(env[4])] == [(None, "unknown"), ("unknown", "error")]
+    # error -> warn -> error: warn setzt den Zaehler zurueck
+    env[4].clear()
+    m3 = _mon(env)
+    for i, st in enumerate(["ok", "error", "warn", "error"]):
+        m3._update(res(st, float(i)))
+    assert [c["status"] for c in _changes(env[4])] == ["ok", "warn"]
+
+
 def test_cli_fail_threshold_option():
     p = cli.build_parser()
     assert p.parse_args(["play", "x.flac"]).health_fail_threshold == 2
