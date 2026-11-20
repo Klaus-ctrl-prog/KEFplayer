@@ -138,3 +138,97 @@ def test_runlog_writes_jsonl(tmp_path):
     assert [r["event"] for r in recs] == ["a", "b"]
     assert recs[0]["x"] == 1 and "ts" in recs[0]
     RunLog(None).write("ignored")  # ohne Datei kein Fehler
+
+
+# ---- F-07: keine stillen Ueberschreibungen, atomisches Schreiben ----
+
+import shutil
+from pathlib import Path
+
+from kefplayer import cli
+
+
+def _two_same_names(tone_factory, tmp_path):
+    src = tone_factory("x", seconds=0.2)
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir(), b.mkdir()
+    return shutil.copy(src, a / "song.flac"), shutil.copy(src, b / "song.flac")
+
+
+def test_f07_cli_gleiche_basisnamen_aus_zwei_ordnern_bricht_vorab_ab(tone_factory, tmp_path, capsys):
+    fa, fb = _two_same_names(tone_factory, tmp_path)
+    out = tmp_path / "out"
+    with pytest.raises(SystemExit) as e:
+        cli.main(["process", str(fa), str(fb), "--out", str(out)])
+    assert "gleicher Zielname" in str(e.value.code)
+    assert not out.exists() or not any(out.iterdir())  # nichts geschrieben
+
+
+def test_f07_cli_mit_number_eindeutig_und_zuordnung_sichtbar(tone_factory, tmp_path, capsys):
+    fa, fb = _two_same_names(tone_factory, tmp_path)
+    out = tmp_path / "out"
+    assert cli.main(["process", str(fa), str(fb), "--out", str(out), "--number"]) == 0
+    assert sorted(p.name for p in out.iterdir()) == ["000_song.flac", "001_song.flac"]
+    text = capsys.readouterr().out
+    assert f"{fa} -> 000_song.flac" in text and f"{fb} -> 001_song.flac" in text
+
+
+def test_f07_cli_vorhandene_zieldatei_bleibt_ohne_overwrite(tone_factory, tmp_path):
+    src = tone_factory("y", seconds=0.2)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / f"{src.stem}.flac").write_bytes(b"ALT")
+    with pytest.raises(SystemExit) as e:
+        cli.main(["process", str(src), "--out", str(out)])
+    assert "existiert bereits" in str(e.value.code)
+    assert (out / f"{src.stem}.flac").read_bytes() == b"ALT"
+    assert cli.main(["process", str(src), "--out", str(out), "--overwrite"]) == 0
+    assert audio.probe(out / f"{src.stem}.flac").format == "FLAC"
+
+
+def test_f07_cli_quelle_gleich_ziel(tone_factory, tmp_path):
+    src = Path(shutil.copy(tone_factory("z", seconds=0.2), tmp_path / "q.flac"))
+    before = src.read_bytes()
+    with pytest.raises(SystemExit) as e:
+        cli.main(["process", str(src), "--out", str(tmp_path), "--overwrite"])
+    assert "Quelldatei selbst" in str(e.value.code)
+    assert src.read_bytes() == before
+
+
+def test_f07_process_file_quelle_gleich_ziel_wird_immer_abgelehnt(tone_factory, tmp_path):
+    src = Path(shutil.copy(tone_factory("s", seconds=0.2), tmp_path / "q.flac"))
+    before = src.read_bytes()
+    with pytest.raises(FileExistsError):
+        audio.process_file(src, tmp_path, Profile(), fmt="FLAC")  # auch mit overwrite=True (Standard)
+    with pytest.raises(audio.AudioProcessError) as e:
+        audio.process_file(src, tmp_path, Profile(), fmt="FLAC", classify_errors=True)
+    assert e.value.category == "cache_io"
+    assert src.read_bytes() == before
+
+
+def test_f07_process_file_ohne_overwrite_laesst_vorhandene_datei(tone_factory, tmp_path):
+    src = tone_factory("o", seconds=0.2)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / f"{src.stem}.flac").write_bytes(b"ALT")
+    with pytest.raises(FileExistsError):
+        audio.process_file(src, out, Profile(), overwrite=False)
+    assert (out / f"{src.stem}.flac").read_bytes() == b"ALT"
+
+
+def test_f07_schreibfehler_hinterlaesst_keine_halbe_datei(tone_factory, tmp_path, monkeypatch):
+    src = tone_factory("e", seconds=0.2)
+    out = tmp_path / "out"
+    out.mkdir()
+    dst = out / f"{src.stem}.flac"
+    dst.write_bytes(b"ALT")
+
+    def broken(path, *a, **k):
+        Path(path).write_bytes(b"halb")
+        raise OSError("Datentraeger voll")
+
+    monkeypatch.setattr(audio, "_write", broken)
+    with pytest.raises(OSError):
+        audio.process_file(src, out, Profile())
+    assert dst.read_bytes() == b"ALT"  # alte Datei unversehrt
+    assert sorted(p.name for p in out.iterdir()) == [dst.name]  # keine Temp-Reste

@@ -6,6 +6,8 @@ neutrales Profil bitgenau durchlaeuft. Ganze Datei liegt als float64 im Speicher
 
 from __future__ import annotations
 
+import os
+import secrets
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -103,6 +105,19 @@ def _write(path: Path, data: np.ndarray, fs: int, subtype: str, fmt: str, dither
     sf.write(str(path), arr, fs, subtype=subtype, format=fmt)
 
 
+def output_path(src: str | Path, dst_dir: str | Path, fmt: str = "FLAC", stem: str | None = None) -> Path:
+    """Zieldatei, die process_file fuer src schreiben wuerde (fuer Vorabpruefungen)."""
+    src = Path(src)
+    return Path(dst_dir) / f"{stem or src.stem}.{fmt.lower()}"
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return a.exists() and b.exists() and os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
 def process_file(
     src: str | Path,
     dst_dir: str | Path,
@@ -114,8 +129,14 @@ def process_file(
     seed: int = 0,
     stem: str | None = None,
     classify_errors: bool = False,
+    overwrite: bool = True,
 ) -> dict:
-    """Filtert eine Datei und schreibt sie nach dst_dir. Rueckgabe: Protokoll-Dict."""
+    """Filtert eine Datei und schreibt sie nach dst_dir. Rueckgabe: Protokoll-Dict.
+
+    Geschrieben wird in eine temporaere Datei im Zielordner, die erst nach erfolgreicher Pruefung die Zieldatei
+    ersetzt (bei Fehlern bleibt keine halbe Datei). Quelle == Ziel wird immer abgelehnt; overwrite=False lehnt
+    eine vorhandene Zieldatei ab (FileExistsError bzw. AudioProcessError 'cache_io').
+    """
     t0 = time.perf_counter()
     src = Path(src)
     dst_dir = Path(dst_dir)
@@ -123,6 +144,17 @@ def process_file(
     try:
         dst_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
+        if classify_errors:
+            raise AudioProcessError("cache_io", str(exc)) from exc
+        raise
+
+    dst = output_path(src, dst_dir, fmt, stem)
+    try:
+        if _same_file(src, dst):
+            raise FileExistsError(f"Ausgabe waere die Quelldatei selbst: {dst}")
+        if not overwrite and dst.exists():
+            raise FileExistsError(f"Ausgabedatei existiert bereits (nicht ueberschrieben): {dst}")
+    except FileExistsError as exc:
         if classify_errors:
             raise AudioProcessError("cache_io", str(exc)) from exc
         raise
@@ -155,10 +187,19 @@ def process_file(
 
     # Dither nur bei 16 Bit und nur, wenn tatsaechlich neu quantisiert wird
     use_dither = dither and subtype == "PCM_16" and not (neutral and info.bits == 16)
-    dst = dst_dir / f"{stem or src.stem}.{fmt.lower()}"
+    tmp = dst_dir / f".{dst.name}.{secrets.token_hex(4)}.tmp"
     try:
-        _write(dst, out, fs, subtype, fmt.upper(), use_dither, seed)
-        out_info = probe(dst)
+        try:
+            _write(tmp, out, fs, subtype, fmt.upper(), use_dither, seed)
+            out_info = probe(tmp)
+            if not overwrite and dst.exists():  # erneut pruefen: Datei kann waehrend der Verarbeitung entstanden sein
+                raise FileExistsError(f"Ausgabedatei existiert bereits (nicht ueberschrieben): {dst}")
+            os.replace(tmp, dst)
+        finally:
+            try:
+                tmp.unlink()  # nach os.replace nicht mehr vorhanden
+            except OSError:
+                pass
     except (OSError, sf.LibsndfileError) as exc:
         if classify_errors:
             raise AudioProcessError("cache_io", str(exc)) from exc

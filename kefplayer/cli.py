@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import urllib.parse
@@ -134,18 +135,45 @@ def cmd_response(args) -> int:
     return 0
 
 
+def _process_target_problems(files, targets, *, overwrite: bool) -> list[str]:
+    """Vorabpruefung (F-07): eindeutige Zielnamen (ohne Gross-/Kleinschreibung, wie unter Windows), Quelle != Ziel,
+    vorhandene Zieldateien nur mit overwrite."""
+    problems, seen = [], {}
+    for f, t in zip(files, targets):
+        key = os.path.normcase(str(t.resolve() if t.parent.exists() else t)).casefold()
+        if key in seen:
+            problems.append(f"gleicher Zielname {t.name}: {seen[key]} und {f}")
+        else:
+            seen[key] = f
+        try:
+            same = t.exists() and os.path.samefile(f, t)
+        except OSError:
+            same = False
+        if same:
+            problems.append(f"Ziel ist die Quelldatei selbst: {f}")
+        elif t.exists() and not overwrite:
+            problems.append(f"Zieldatei existiert bereits: {t}")
+    return problems
+
+
 def cmd_process(args) -> int:
     files = collect_files(args.inputs)
     if not files:
         sys.exit("Keine Audiodateien gefunden")
+    fmt = args.format or "flac"
+    targets = [audio.output_path(f, args.out, fmt, f"{n:03d}_{f.stem}" if args.number else None) for n, f in enumerate(files)]
+    problems = _process_target_problems(files, targets, overwrite=args.overwrite)
+    if problems:
+        sys.exit("Nichts verarbeitet:\n" + "\n".join(f"  {p}" for p in problems)
+                 + "\nTipps: --number fuer eindeutige Namen, anderen --out-Ordner, oder --overwrite.")
     prof = load_profile(args.profile)
     log = RunLog(args.log)
-    for n, f in enumerate(files):
-        rep = audio.process_file(f, args.out, prof, fmt=args.format or "flac", bits=args.bits, dither=not args.no_dither,
-                                 stem=f"{n:03d}_{f.stem}" if args.number else None)
+    for n, (f, dst) in enumerate(zip(files, targets)):
+        rep = audio.process_file(f, args.out, prof, fmt=fmt, bits=args.bits, dither=not args.no_dither,
+                                 stem=dst.stem, overwrite=args.overwrite)
         log.write("process", **rep)
         o = rep["out"]
-        print(f"{Path(rep['dst']).name}: {o['format']} {o['samplerate']} Hz {o['bits']} Bit, Preamp {rep['preamp_db']:+.2f} dB, "
+        print(f"{f} -> {Path(rep['dst']).name}: {o['format']} {o['samplerate']} Hz {o['bits']} Bit, Preamp {rep['preamp_db']:+.2f} dB, "
               f"Spitze {rep['peak_in_dbfs']:+.2f} -> {rep['peak_out_dbfs']:+.2f} dBFS"
               + (", Clipping-Schutz aktiv" if rep["guard_gain_db"] else ""))
     return 0
@@ -597,6 +625,7 @@ def build_parser() -> argparse.ArgumentParser:
     pc.add_argument("--out", required=True)
     pc.add_argument("--log", default=None, help="JSON-Lines-Protokoll")
     pc.add_argument("--number", action="store_true", help="Dateinamen mit laufender Nummer versehen")
+    pc.add_argument("--overwrite", action="store_true", help="vorhandene Zieldateien ersetzen (Standard: abbrechen)")
     _output_args(pc)
     pc.set_defaults(func=cmd_process)
 
