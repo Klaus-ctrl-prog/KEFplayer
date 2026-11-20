@@ -588,3 +588,65 @@ def test_f10_quality_gate_mit_nicht_text_codec_wirft_keinen_attributeerror():
     with FakeStation(body=adts_stream(n_frames=400), content_type="audio/aac") as st:
         info, rep, verdict = radio.quality_gate(st.url, favorite={"name": "x", "expected_codec": 5}, warmup_s=0.1, window_s=0.3)
     assert verdict is not None
+
+
+# ---- F-1: laufender Abruf ist ab dem Beginn im Request-Log sichtbar ----
+
+import re
+import socket
+import urllib.parse
+
+
+def _stalled_get(url):
+    """Verbindet, sendet GET, liest nur den Kopf und nie den Rumpf (Renderer haengt mitten im Abruf)."""
+    p = urllib.parse.urlsplit(url)
+    c = socket.create_connection((p.hostname, p.port), timeout=5)
+    c.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+    c.sendall(f"GET {p.path} HTTP/1.1\r\nHost: x\r\n\r\n".encode())
+    c.recv(512)
+    return c
+
+
+def test_f1_laufender_abruf_ist_im_log_sichtbar_und_wird_abgeschlossen(tmp_path):
+    s = M.MediaServer(bind="127.0.0.1", port=0, advertise_host="127.0.0.1")
+    s.start()
+    f = tmp_path / "big.bin"
+    f.write_bytes(bytes(40_000_000))
+    try:
+        url, token = s.register(f, "application/octet-stream")
+        c = _stalled_get(url)
+        assert until(lambda: len(s.requests_for(token)) == 1, 3), "laufender Abruf fehlt im Log"
+        (r,) = s.requests_for(token)
+        assert r["active"] is True and r["status"] is None and r["method"] == "GET"
+        c.close()  # Renderer bricht ab -> Handler schliesst den Eintrag ab, kein zweiter Eintrag
+        assert until(lambda: s.requests_for(token) and s.requests_for(token)[0]["active"] is False, 5)
+        (r,) = s.requests_for(token)
+        assert r["status"] == 200 and 0 < r["bytes_sent"] < 40_000_000 and len(s.requests_for(token)) == 1
+    finally:
+        s.stop()
+
+
+def test_f1_player_ordnet_laufenden_abruf_nicht_als_nie_abgerufen_ein(rig, tone_factory):
+    mock, server, player = rig(mock_kw={"stall": True}, start_timeout_s=1.5)
+    a = tone_factory("big", seconds=300, fs=48000)
+    out = {}
+    th = threading.Thread(target=lambda: out.update(r=player.play_queue([a])), daemon=True)
+    th.start()
+    uri = None
+    t0 = time.monotonic()
+    while uri is None and time.monotonic() - t0 < 10:
+        for act, args in list(mock.actions):
+            if act == "SetAVTransportURI":
+                uri = re.search(r"http://[^\s'\"]+", str(args)).group(0)
+        time.sleep(0.02)
+    assert uri
+    c = _stalled_get(uri)
+    try:
+        th.join(15)
+        assert not th.is_alive()
+        r = out["r"][0]
+        assert r["end_reason"] == "never_started"
+        assert r["error_category"] == "renderer_fetched_no_play", "laufender Abruf wurde als 'nie abgerufen' gemeldet"
+        assert len(r["requests"]) == 1 and r["requests"][0]["method"] == "GET"
+    finally:
+        c.close()
