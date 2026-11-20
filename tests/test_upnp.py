@@ -234,3 +234,235 @@ def test_parse_range_unit():
     assert parse_range("bytes=2-4", 10) == (2, 4)
     with pytest.raises(RangeNotSatisfiable):
         parse_range("bytes=10-", 10)
+
+
+# ---- F-06: Vertrauensgrenze fuer UPnP-URLs ----
+
+import socket as _socket
+import time as _time
+
+
+class _RawServer:
+    """Minimaler TCP-Server: zaehlt Verbindungen und antwortet mit handler(conn)."""
+
+    def __init__(self, handler=None, host="127.0.0.1"):
+        self.sock = _socket.socket()
+        self.sock.bind((host, 0))
+        self.sock.listen(16)
+        self.host, self.port = host, self.sock.getsockname()[1]
+        self.accepted = 0
+        self.handler = handler
+        self._t = threading.Thread(target=self._loop, daemon=True)
+        self._t.start()
+
+    def _loop(self):
+        while True:
+            try:
+                c, _ = self.sock.accept()
+            except OSError:
+                return
+            self.accepted += 1
+            if self.handler:
+                threading.Thread(target=self._serve, args=(c,), daemon=True).start()
+            else:
+                c.close()
+
+    def _serve(self, c):
+        try:
+            c.settimeout(5)
+            c.recv(65536)
+            self.handler(c)
+        except OSError:
+            pass
+        finally:
+            c.close()
+
+    def url(self, path="/d.xml"):
+        return f"http://{self.host}:{self.port}{path}"
+
+    def close(self):
+        self.sock.close()
+
+
+def _reply(body: bytes, status="200 OK", extra=b""):
+    def h(c):
+        c.sendall(f"HTTP/1.1 {status}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n".encode() + extra + b"\r\n" + body)
+    return h
+
+
+def _desc(control="/ctl", urlbase=None):
+    ub = f"<URLBase>{urlbase}</URLBase>" if urlbase else ""
+    return (f'<?xml version="1.0"?><root xmlns="urn:schemas-upnp-org:device-1-0">{ub}<device>'
+            f"<friendlyName>X</friendlyName><serviceList><service><serviceType>{upnp.SVC_AVT}</serviceType>"
+            f"<serviceId>a</serviceId><controlURL>{control}</controlURL></service></serviceList></device></root>").encode()
+
+
+@pytest.fixture
+def foreign():
+    """Fremder Zielhost: 127.0.0.2 (anderer Host als 127.0.0.1). Muss nach jedem Test 0 Verbindungen haben."""
+    try:
+        srv = _RawServer(_reply(b"x"), host="127.0.0.2")
+    except OSError:
+        pytest.skip("127.0.0.2 nicht bindbar")
+    yield srv
+    srv.close()
+
+
+def test_f06_ssdp_location_auf_fremden_host_wird_verworfen(foreign):
+    udp = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+    udp.bind(("127.0.0.1", 0))
+    udp.settimeout(2)
+
+    def answer():
+        try:
+            for _ in range(2):
+                _, src = udp.recvfrom(4096)
+                for loc in (foreign.url(), "file:///etc/passwd", "http://u:p@127.0.0.1:1/d.xml"):
+                    udp.sendto(f"HTTP/1.1 200 OK\r\nLOCATION: {loc}\r\nST: x\r\n\r\n".encode(), src)
+        except OSError:
+            pass
+
+    t = threading.Thread(target=answer, daemon=True)
+    t.start()
+    found = upnp.ssdp_search(timeout=0.6, addr=udp.getsockname())
+    udp.close()
+    assert found == []
+    assert foreign.accepted == 0
+
+
+def test_f06_ssdp_location_passend_zum_absender_bleibt():
+    assert upnp.ssdp_location_trusted("http://127.0.0.1:49152/d.xml", "127.0.0.1")
+    assert not upnp.ssdp_location_trusted("http://10.0.0.9:49152/d.xml", "127.0.0.1")
+
+
+@pytest.mark.parametrize("kind", ["urlbase", "control_abs"])
+def test_f06_beschreibung_mit_fremdem_ziel_wird_abgelehnt(foreign, kind):
+    body = _desc(urlbase=foreign.url("/")) if kind == "urlbase" else _desc(control=foreign.url("/ctl"))
+    own = _RawServer(_reply(body))
+    try:
+        with pytest.raises(upnp.UpnpError):
+            r = upnp.Renderer.from_location(own.url(), timeout=2)
+            r.transport_state()
+    finally:
+        own.close()
+    assert foreign.accepted == 0
+
+
+def test_f06_eigener_host_anderer_port_wird_abgelehnt():
+    other = _RawServer(_reply(b"x"))
+    own = _RawServer(_reply(_desc(control=other.url("/ctl"))))
+    try:
+        with pytest.raises(upnp.UpnpError):
+            upnp.Renderer.from_location(own.url(), timeout=2)
+    finally:
+        own.close(), other.close()
+    assert other.accepted == 0
+
+
+def test_f06_weiterleitung_auf_fremden_host_wird_nicht_gefolgt(foreign):
+    loc = f"Location: {foreign.url()}\r\n".encode()
+    own = _RawServer(_reply(b"", status="302 Found", extra=loc))
+    try:
+        with pytest.raises(OSError):  # HTTPError 302, kein Folgen
+            upnp.http_get(own.url(), timeout=2)
+        good = _RawServer(_reply(_desc()))
+        info = upnp.Renderer.from_location(good.url(), timeout=2).info
+        good.handler = _reply(b"", status="307 Temporary Redirect", extra=loc)
+        with pytest.raises(upnp.UpnpError):
+            upnp.Renderer(info, timeout=2).transport_state()
+        good.close()
+    finally:
+        own.close()
+    assert foreign.accepted == 0
+
+
+@pytest.mark.parametrize("url", [
+    "http://user:pw@127.0.0.1:{p}/d.xml", "http://user@127.0.0.1:{p}/d.xml",
+    "ftp://127.0.0.1:{p}/d.xml", "https://127.0.0.1:{p}/d.xml",
+    "http:///d.xml", "http://127.0.0.1:99999/d.xml", "http://127.0.0.1:{p}/d .xml",
+])
+def test_f06_ungueltige_renderer_url_ohne_verbindung(url):
+    own = _RawServer(_reply(_desc()))
+    try:
+        with pytest.raises(upnp.UpnpError):
+            upnp.Renderer.from_location(url.format(p=own.port), timeout=2)
+        _time.sleep(0.1)
+        assert own.accepted == 0
+    finally:
+        own.close()
+
+
+def test_f06_file_schema_wird_nicht_gelesen(tmp_path):
+    f = tmp_path / "d.xml"
+    f.write_bytes(_desc(control="http://127.0.0.1:1/ctl"))  # gueltige Beschreibung: ohne Pruefung wuerde sie gelesen
+    with pytest.raises(upnp.UpnpError, match="Schema"):
+        upnp.Renderer.from_location(f.as_uri(), timeout=2)
+    with pytest.raises(upnp.UpnpError, match="Schema"):
+        upnp.http_get(f.as_uri())
+
+
+@pytest.mark.parametrize("control", ["http://u:p@127.0.0.1:{p}/ctl", "ftp://127.0.0.1:{p}/ctl"])
+def test_f06_service_url_mit_userinfo_oder_fremdem_schema(control):
+    own = _RawServer()
+    try:
+        with pytest.raises(upnp.UpnpError):
+            upnp.parse_description(_desc(control=control.format(p=own.port)), own.url())
+    finally:
+        own.close()
+
+
+@pytest.mark.parametrize("with_length", [True, False])
+def test_f06_uebergrosse_beschreibung(monkeypatch, with_length):
+    monkeypatch.setattr(upnp, "MAX_RESPONSE_BYTES", 4096)
+    big = _desc() + b" " * 10000
+
+    def h(c):
+        head = f"Content-Length: {len(big)}\r\n" if with_length else ""
+        c.sendall(f"HTTP/1.1 200 OK\r\n{head}Connection: close\r\n\r\n".encode() + big)
+
+    own = _RawServer(h)
+    try:
+        with pytest.raises(upnp.UpnpError, match="zu gross"):
+            upnp.Renderer.from_location(own.url(), timeout=2)
+    finally:
+        own.close()
+
+
+def test_f06_uebergrosse_soap_antwort(monkeypatch):
+    own = _RawServer(_reply(_desc()))
+    try:
+        info = upnp.Renderer.from_location(own.url(), timeout=2).info
+        monkeypatch.setattr(upnp, "MAX_RESPONSE_BYTES", 4096)
+        own.handler = _reply(b"<a>" + b"x" * 10000 + b"</a>")
+        with pytest.raises(upnp.UpnpError, match="zu gross"):
+            upnp.Renderer(info, timeout=2).transport_state()
+    finally:
+        own.close()
+
+
+@pytest.mark.parametrize("phase", ["header", "body"])
+def test_f06_tropfende_antwort_endet_in_gesamtfrist(phase):
+    stop = threading.Event()
+
+    def h(c):
+        head = b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n"
+        if phase == "body":
+            c.sendall(head)
+            data = b"x" * 1000
+        else:
+            data = head
+        for b in data:  # 1 Byte je 0,1 s: jede Leseoperation bleibt unter dem Timeout
+            if stop.is_set():
+                return
+            c.sendall(bytes([b]))
+            _time.sleep(0.1)
+
+    own = _RawServer(h)
+    t0 = _time.monotonic()
+    try:
+        with pytest.raises(TimeoutError, match="Zeitlimit"):
+            upnp.http_get(own.url(), timeout=0.5)
+    finally:
+        stop.set()
+        own.close()
+    assert _time.monotonic() - t0 < 2.0  # <= Gesamtfrist + Timeout je Operation (+ Reserve)
