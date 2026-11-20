@@ -452,3 +452,30 @@ def test_diagnostics_includes_shadow_repair_decisions_without_actions():
     assert all(item["simulated"] is True for item in data["repair_decisions"])
     assert all(item["repair_executed"] is False for item in data["repair_decisions"])
     assert all(item["status"] in {"eligible", "deferred", "suppressed"} for item in data["repair_decisions"])
+
+
+# ---- F-17: Details-Modus uebernimmt nie Benutzername/Passwort ----
+
+@pytest.mark.parametrize("text,expected,gone", [
+    ("fehler http://user:geheim@192.168.1.20:8765/m/TOKEN123/a.flac", "http://192.168.1.20:8765/<pfad entfernt>", ("user", "geheim", "TOKEN123")),
+    ("http://nur@host.example/x", "http://host.example/<pfad entfernt>", ("nur@",)),
+    ("http://192.168.1.20:8765/m/TOKEN123/a.flac", "http://192.168.1.20:8765/<pfad entfernt>", ("TOKEN123",)),
+    ("http://[fe80::1]:8765/m/TOKEN123/a.flac", "http://[fe80::1]:8765/<pfad entfernt>", ("TOKEN123",)),
+    ("http://u:p@[fe80::1]:8765/m/TOKEN123/a.flac", "http://[fe80::1]:8765/<pfad entfernt>", ("u:p", "TOKEN123")),
+    ("https://radio.example/stream/TOKEN123?key=abc", "https://radio.example/<pfad entfernt>", ("TOKEN123", "key=abc")),
+])
+def test_f17_scrub_details_ohne_userinfo(text, expected, gone):
+    out = api.scrub(text, details=True)
+    assert expected in out
+    for g in gone:
+        assert g not in out
+
+
+def test_f17_scrub_details_ungueltiger_port_wird_nicht_uebernommen():
+    out = api.scrub("http://u:p@host:99999999/m/TOKEN123/a", details=True)
+    assert "TOKEN123" not in out and "u:p" not in out
+
+
+def test_f17_scrub_normalmodus_ipv6_url_token_entfernt():
+    out = api.scrub("Fehler bei http://[fe80::1]:8765/m/TOKEN123/a.flac (Details)")
+    assert "TOKEN123" not in out and "fe80" not in out and "<url>" in out

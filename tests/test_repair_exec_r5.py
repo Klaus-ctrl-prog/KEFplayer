@@ -210,3 +210,105 @@ def test_supervisor_thread_starts_and_stops_and_respects_busy():
     time.sleep(0.1)
     sup.stop()
     assert old.stopped == 0 and sup.monitor is old and events == []
+
+
+# ---- F-11: echte HealthMonitor-Threads, nicht nur Objektidentitaet ----
+
+import threading
+import time
+
+from kefplayer.health import HealthMonitor
+
+
+class _StalledView(HealthMonitor):
+    """Echter, laufender Monitor, der sich als 'stalled' meldet, solange er nicht gestoppt wurde (Ausloeser fuer R5)."""
+
+    def snapshot(self):
+        snap = super().snapshot()
+        if snap["state"] == "running":
+            snap["state"] = "stalled"
+        return snap
+
+
+class _NeverTicks(HealthMonitor):
+    """Ersatz, der startet, aber nie einen Takt macht (Verifikation scheitert)."""
+
+    def tick(self):
+        return None
+
+
+def _health_threads():
+    return [t for t in threading.enumerate() if t.name == "kefplayer-health" and t.is_alive()]
+
+
+def _real_env():
+    return B.RepairBudget(clock=time.monotonic), []
+
+
+def test_f11_fehlgeschlagener_neustart_laesst_alten_monitor_lebendig_und_funktionsfaehig():
+    budget, events = _real_env()
+    old = _StalledView(lambda *a, **k: None, interval_s=15.0).start()
+    time.sleep(0.2)
+    old.tick()  # funktionsfaehig: Takte werden gezaehlt
+    ticks_before = old.snapshot()["ticks"]
+    new_holder = []
+    try:
+        def make():
+            m = _NeverTicks(lambda *a, **k: None, interval_s=15.0)
+            new_holder.append(m)
+            return m
+        active, result = X.restart_monitor(old, make, busy=lambda: False, budget=budget,
+                                           emit=lambda *a, **k: events.append((a, k)),
+                                           clock=time.monotonic, sleep=time.sleep, verify_timeout_s=0.3)
+        assert result == "failed" and active is old
+        assert old._thread.is_alive() and not old._stop.is_set(), "alter Monitor wurde trotz fehlgeschlagenem Neustart gestoppt"
+        assert old.snapshot()["state"] != "stopped"
+        old.tick()
+        assert old.snapshot()["ticks"] == ticks_before + 1
+        assert not new_holder[0]._thread.is_alive(), "Ersatz-Monitor laeuft nach Fehlschlag weiter"
+        assert len(_health_threads()) == 1
+    finally:
+        old.stop()
+        for m in new_holder:
+            m.stop()
+
+
+def test_f11_erfolgreicher_neustart_genau_ein_lebender_monitor_thread():
+    budget, events = _real_env()
+    old = _StalledView(lambda *a, **k: None, interval_s=15.0).start()
+    time.sleep(0.2)
+    new = None
+    try:
+        def make():
+            return HealthMonitor(lambda *a, **k: None, interval_s=15.0)
+        active, result = X.restart_monitor(old, make, busy=lambda: False, budget=budget,
+                                           emit=lambda *a, **k: events.append((a, k)),
+                                           clock=time.monotonic, sleep=time.sleep, verify_timeout_s=3.0)
+        new = active
+        assert result == "success" and active is not old
+        assert active._thread.is_alive() and active.snapshot()["state"] == "running" and active.snapshot()["ticks"] >= 1
+        assert not old._thread.is_alive() and old.snapshot()["state"] == "stopped"
+        assert len(_health_threads()) == 1
+        assert events[-1][1]["result"] == "success" and "old_monitor_stopped" not in events[-1][1]
+    finally:
+        old.stop()
+        if new is not None:
+            new.stop()
+
+
+def test_f11_start_fehler_beruehrt_den_alten_monitor_nicht():
+    c, budget, events, emit = _env()
+    old = FakeMon("stalled")
+    active, result = X.restart_monitor(old, lambda: FakeMon(start_error=RuntimeError("x")), busy=lambda: False,
+                                       budget=budget, emit=emit, clock=c, sleep=c.sleep)
+    assert result == "failed" and active is old and old.stopped == 0
+
+
+def test_f11_alter_monitor_haengt_wird_gemeldet_nicht_verschwiegen():
+    c, budget, events, emit = _env()
+    old = FakeMon("stalled", stop_error=RuntimeError("haengt"))
+    new = FakeMon()
+    active, result = X.restart_monitor(old, lambda: new, busy=lambda: False, budget=budget, emit=emit,
+                                       clock=c, sleep=c.sleep)
+    assert result == "success" and active is new
+    assert events[-1][1].get("old_monitor_stopped") is False

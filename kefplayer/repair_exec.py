@@ -58,11 +58,9 @@ def restart_monitor(
         return old, "blocked"
 
     emit("repair_start", action=ACTION_R5, trigger=trigger)
-    try:
-        old.stop()
-    except Exception:  # noqa: BLE001 - alter Monitor ist ohnehin gestoert; Neustart trotzdem versuchen
-        pass
-
+    # F-11: Der alte Monitor wird erst gestoppt, wenn der Ersatz gestartet UND verifiziert ist. Scheitert der Neustart,
+    # bleibt der alte Monitor unberuehrt aktiv (nie ein gestoppter Monitor als "aktiv"). Die Ueberlappung ist auf die
+    # Verifikationszeit begrenzt; beide Monitore lesen nur.
     new = None
     try:
         new = make_monitor().start()
@@ -84,15 +82,29 @@ def restart_monitor(
 
     budget.record_attempt(ACTION_R5, succeeded=verified, trigger=trigger)
     if verified:
-        emit("repair_result", action=ACTION_R5, result="success")
+        old_stopped = _stop_confirmed(old)
+        if old_stopped:
+            emit("repair_result", action=ACTION_R5, result="success")
+        else:  # alter Monitor haengt noch in einem blockierenden Aufruf: Stop-Flag ist gesetzt, Thread endet danach von selbst
+            emit("repair_result", action=ACTION_R5, result="success", old_monitor_stopped=False)
         return new, "success"
 
+    new_stopped = _stop_confirmed(new)
+    emit("repair_result", action=ACTION_R5, result="failed", reason="not_verified",
+         **({} if new_stopped else {"new_monitor_stopped": False}))
+    return old, "failed"
+
+
+def _stop_confirmed(mon: Any) -> bool:
+    """stop() aufrufen und pruefen, ob der Monitor tatsaechlich gestoppt ist (Fehler und Haenger werden nicht verschluckt)."""
     try:
-        new.stop()
+        mon.stop()
     except Exception:  # noqa: BLE001
         pass
-    emit("repair_result", action=ACTION_R5, result="failed", reason="not_verified")
-    return old, "failed"
+    try:
+        return mon.snapshot().get("state") == "stopped"
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class RepairSupervisor:

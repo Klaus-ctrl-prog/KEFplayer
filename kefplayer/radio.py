@@ -7,6 +7,7 @@ Nur hochwertige Codecs; MP3 wird bewusst abgelehnt (Entscheidung E-6 vom 18.11.2
 from __future__ import annotations
 
 import json
+import math
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -110,9 +111,17 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_SafeRedirect)
 
 
-def open_stream(url: str, timeout: float = CONNECT_TIMEOUT_S):
-    """Quelle oeffnen. Es werden bewusst keine ICY-Metadaten angefordert."""
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+def open_stream(url: str, timeout: float = CONNECT_TIMEOUT_S, *, byte_range: tuple[int, int] | None = None):
+    """Quelle oeffnen. Es werden bewusst keine ICY-Metadaten angefordert.
+
+    ``byte_range`` = (Offset, Laenge): sendet einen HTTP-Range-Header (nur HLS-Segmente mit EXT-X-BYTERANGE); dann sind
+    200 (Server ignoriert Range) und 206 zulaessig, der Aufrufer prueft den Inhalt.
+    """
+    headers = {"User-Agent": UA, "Accept": "*/*"}
+    if byte_range is not None:
+        off, length = byte_range
+        headers["Range"] = f"bytes={off}-{off + length - 1}"
+    req = urllib.request.Request(url, headers=headers)
     try:
         resp = _OPENER.open(req, timeout=timeout)  # Schema vorher auf http/https geprueft, Weiterleitungen werden ebenso geprueft
     except RadioError:
@@ -124,7 +133,7 @@ def open_stream(url: str, timeout: float = CONNECT_TIMEOUT_S):
     except Exception as e:  # noqa: BLE001 - z. B. http.client.BadStatusLine bei "ICY 200 OK"
         raise RadioError("stream_unreachable", f"Sender antwortet unerwartet ({mask_url(url)}): {type(e).__name__}.") from None
     status = getattr(resp, "status", 200)
-    if status != 200:
+    if status != 200 and not (byte_range is not None and status == 206):
         resp.close()
         raise RadioError("stream_http_error", f"HTTP {status} vom Sender ({mask_url(url)}).")
     return resp
@@ -173,9 +182,23 @@ def load_favorites(path: str | Path) -> list[dict]:
         fav = {"name": name, "url": validate_url(item.get("url", ""))}
         for k in ("genre", "expected_codec", "min_bitrate_kbps", "status", "verified_at", "notes"):
             if k in item:
-                fav[k] = item[k]
+                fav[k] = _check_favorite_field(i, k, item[k])
         out.append(fav)
     return out
+
+
+def _check_favorite_field(i: int, key: str, value):
+    """F-10: strenge Typpruefung der optionalen Favoritenfelder (nie stillschweigend falsche Typen durchreichen).
+    ``null`` bedeutet "nicht gesetzt" (so steht es in der Vorlage) und bleibt erlaubt."""
+    if value is None:
+        return None
+    if key == "min_bitrate_kbps":
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 < value <= 100_000:
+            raise RadioError("favorites_invalid", f"Eintrag {i}: 'min_bitrate_kbps' muss eine endliche Zahl > 0 sein.")
+    elif key in ("genre", "expected_codec", "status", "verified_at", "notes"):
+        if not isinstance(value, str):
+            raise RadioError("favorites_invalid", f"Eintrag {i}: '{key}' muss ein Text sein.")
+    return value
 
 
 def resolve_target(target: str, favorites_path: str | Path | None) -> tuple[str, str]:
@@ -231,7 +254,8 @@ def quality_gate(url: str, *, favorite: dict | None = None, ffprobe: str | None 
     if ffprobe:
         rep = quality.merge(rep, quality.ffprobe_probe(info.url, [ffprobe]))
     verdict = quality.evaluate(rep, floor_kbps=floor, strict_lc=strict_lc)
-    exp = (fav.get("expected_codec") or "").lower()
+    exp = fav.get("expected_codec")
+    exp = exp.lower() if isinstance(exp, str) else ""  # F-10: auch bei direkt uebergebenen Favoriten kein AttributeError
     if verdict.ok and exp and exp != rep.codec:
         verdict = quality.Verdict("rejected", "stream_format_unsupported",
                                   [f"Erwarteter Codec '{exp}', erkannt '{rep.codec}'."], verdict.effective_kbps, verdict.flags)

@@ -13,7 +13,9 @@ Der kleinere vorhandene Bitratenwert zaehlt (konservativ).
 from __future__ import annotations
 
 import json
+import math
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -93,10 +95,9 @@ def evaluate(rep: StreamReport, *, floor_kbps: float = FLOOR_KBPS, target_kbps: 
 
 def effective_floor(favorite_min: float | int | None) -> float:
     """Die Mindestbitrate eines Favoriten darf die Untergrenze nur anheben."""
-    try:
-        return max(float(favorite_min), FLOOR_KBPS) if favorite_min is not None else float(FLOOR_KBPS)
-    except (TypeError, ValueError):
-        return float(FLOOR_KBPS)
+    if isinstance(favorite_min, bool) or not isinstance(favorite_min, (int, float)) or not math.isfinite(favorite_min):
+        return float(FLOOR_KBPS)  # F-10: NaN/Inf/Texte/Bool ergeben nie eine Schwelle
+    return max(float(favorite_min), float(FLOOR_KBPS))
 
 
 # ---------------------------------------------------------------- native Erkennung
@@ -171,52 +172,116 @@ def detect_codec(buf: bytes) -> StreamReport:
     return rep
 
 
+class _ProbeState:
+    """Gemeinsamer Zustand zwischen Messthread und Aufrufer (F-05)."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.done = threading.Event()
+        self.abandoned = False
+        self.head = b""
+        self.rep: StreamReport | None = None
+        self.got = 0
+        self.t_start: float | None = None
+        self.t_last: float | None = None
+        self.exc: BaseException | None = None
+
+
 def native_probe(open_fn: Callable[[], object], *, warmup_s: float = 3.0, window_s: float = 10.0,
                  clock: Callable[[], float] = time.monotonic, chunk: int = 4096) -> StreamReport:
     """Strom oeffnen, Codec erkennen und die Bitrate im Fenster [warmup, warmup+window] messen.
 
     Die ersten Sekunden werden verworfen: viele Sender schicken beim Verbinden einen Puffer-Burst.
+
+    Gesamtdauer (F-05): Die Messung laeuft in einem Hilfsthread, der Aufrufer wartet hoechstens
+    ``warmup_s + window_s`` plus kleiner Reserve (Echtzeit). Ein blockierender oder tropfender Lesevorgang kann das
+    nicht ueberschreiten: dann wird mit dem bis dahin Gemessenen (Notiz) zurueckgekehrt; der Hilfsthread (Daemon)
+    schliesst die Quelle, sobald sein Lesevorgang endet.
     """
-    src = open_fn()
-    try:
-        read = getattr(src, "read1", None) or src.read
-        head = b""
-        t0 = clock()
-        while len(head) < 4096 and clock() - t0 < warmup_s + window_s:
-            d = read(chunk)
-            if not d:
-                break
-            head += d
-        rep = detect_codec(head)
-        got, t_start, started = 0, None, False
-        while True:
-            now = clock()
-            if now - t0 >= warmup_s + window_s:
-                break
-            d = read(chunk)
-            if not d:
-                rep.notes.append("Strom endete waehrend der Messung.")
-                break
-            now = clock()
-            if now - t0 >= warmup_s:
-                if not started:
-                    started, t_start = True, now
-                else:
-                    got += len(d)
-        if started and t_start is not None:
-            span = clock() - t_start
-            if span >= window_s * 0.5 and got > 0:
-                rep.measured_kbps = got * 8 / span / 1000.0
-            else:
-                rep.notes.append("Messfenster zu kurz fuer eine Bitrate.")
-        else:
-            rep.notes.append("Keine Daten im Messfenster.")
-        return rep
-    finally:
+    total = warmup_s + window_s
+    st = _ProbeState()
+
+    def work() -> None:
+        src = None
         try:
-            src.close()
-        except Exception:  # noqa: BLE001
-            pass
+            src = open_fn()
+            read = getattr(src, "read1", None) or src.read
+            head = b""
+            t0 = clock()
+            while len(head) < 4096 and clock() - t0 < total:
+                d = read(chunk)
+                with st.lock:
+                    if st.abandoned:
+                        return
+                    if not d:
+                        break
+                    head += d
+                    st.head = head
+            if not head and st.head:
+                head = st.head
+            rep = detect_codec(head)
+            with st.lock:
+                st.rep = rep
+            started = False
+            while True:
+                now = clock()
+                if now - t0 >= total:
+                    break
+                d = read(chunk)
+                with st.lock:
+                    if st.abandoned:
+                        return
+                    if not d:
+                        rep.notes.append("Strom endete waehrend der Messung.")
+                        break
+                    now = clock()
+                    if now - t0 >= warmup_s:
+                        if not started:
+                            started, st.t_start = True, now
+                        else:
+                            st.got += len(d)
+                            st.t_last = now
+            with st.lock:
+                if st.abandoned:
+                    return
+                if started and st.t_start is not None:
+                    span = clock() - st.t_start
+                    if span >= window_s * 0.5 and st.got > 0:
+                        rep.measured_kbps = st.got * 8 / span / 1000.0
+                    else:
+                        rep.notes.append("Messfenster zu kurz fuer eine Bitrate.")
+                else:
+                    rep.notes.append("Keine Daten im Messfenster.")
+        except BaseException as e:  # noqa: BLE001 - wird dem Aufrufer unveraendert weitergegeben
+            with st.lock:
+                st.exc = e
+        finally:
+            st.done.set()
+            if src is not None:
+                try:
+                    src.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    th = threading.Thread(target=work, name="quality-probe", daemon=True)
+    th.start()
+    slack = min(1.0, 0.1 * total + 0.25)
+    finished = st.done.wait(total + slack)
+    with st.lock:
+        if finished:
+            if st.exc is not None:
+                raise st.exc
+            return st.rep if st.rep is not None else detect_codec(b"")
+        st.abandoned = True  # ab hier veraendert der Hilfsthread nichts mehr
+        rep = st.rep if st.rep is not None else detect_codec(st.head)
+        rep.notes.append(f"Messung nach der Gesamtfrist von {total:g} s abgebrochen (Lesevorgang blockierte oder war zu langsam).")
+        if st.t_start is not None and st.t_last is not None and st.t_last > st.t_start:
+            span = st.t_last - st.t_start
+            if span >= window_s * 0.5 and st.got > 0:
+                rep.measured_kbps = st.got * 8 / span / 1000.0
+        if rep.measured_kbps is None:
+            rep.notes.append("Messfenster zu kurz fuer eine Bitrate.")
+        return rep
 
 
 # ---------------------------------------------------------------- ffprobe (optional)

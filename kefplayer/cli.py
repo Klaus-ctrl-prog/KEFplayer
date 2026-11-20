@@ -451,6 +451,9 @@ def cmd_radio(args) -> int:
     except radio.RadioError as e:
         _err(f"Fehler ({e.category}): {e}")
         return 2
+    except KeyboardInterrupt:  # F-09: Abbruch waehrend des Qualitaetschecks: nichts gesendet, kein Traceback
+        print("\nAbgebrochen (waehrend der Qualitaetspruefung; nichts an die KEF gesendet).")
+        return 130
     _print_verdict(name, rep, verdict)
     if not verdict.ok:
         _err(f"Fehler ({verdict.category}): Stream erfuellt die Qualitaetsregel nicht; nichts an die KEF gesendet.")
@@ -517,7 +520,12 @@ def cmd_radio(args) -> int:
                 st = sup.stats()
                 _err(f"Fehler ({st.last_category or 'decoder_failed'}): Decoder nicht gestartet: {st.last_error or 'Zeitueberschreitung'}")
                 return 2
-            res = player.play_stream(pipe.open_source, "audio/wav", ".wav", name, radio.mask_url(info.url))
+            def source_done():  # F-14: Quelle endgueltig beendet (Supervisor fertig oder Pipeline zu Ende) und Puffer leer
+                ps = pipe.stats()
+                return ps.state in ("ended", "failed", "stopped") and ps.buffered_bytes == 0
+
+            res = player.play_stream(pipe.open_source, "audio/wav", ".wav", name, radio.mask_url(info.url),
+                                     source_done=source_done)
         else:
             res = player.play_stream(lambda: radio.open_stream(info.url), info.mime, info.ext, name, radio.mask_url(info.url))
     except KeyboardInterrupt:
@@ -534,7 +542,7 @@ def cmd_radio(args) -> int:
         if pipe is not None:
             pipe.stop()
         server.stop()
-    ok = res.get("end_reason") in ("ended", "stopped")
+    ok = res.get("end_reason") in ("ended", "stopped", "source_ended")
     if e1b:
         ps, ss = pipe.stats(), sup.stats()
         print(f"Radio-Zaehler: Reconnects {ss.reconnects}, Luecken {ps.gaps}, Unterlaeufe {ps.underruns}, "

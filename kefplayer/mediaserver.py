@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import http.server
 import re
 import secrets
@@ -20,6 +21,8 @@ from .upnp import DLNA_FEATURES, DLNA_FEATURES_LIVE
 HANDLER_JOIN_S = 2.0  # Obergrenze, die stop() auf laufende Handler wartet
 REQUEST_TIMEOUT_S = 15.0  # Frist fuer das Einlesen einer Anfrage (Zeile + Header); danach ohne Frist (Streaming/Range-Antworten)
 REQUEST_TOTAL_S = 30.0  # Gesamtfrist bis die Anfrage (Zeile + Header) vollstaendig ist; gegen Tropf-Clients. Obergrenze fuer das Freiwerden ~ TOTAL + TIMEOUT_S
+MAX_LOG_PER_TOKEN = 100  # F-16: Anfrageprotokoll je Token begrenzt (aelteste Eintraege fallen heraus); Arbeitswert
+MAX_LOG_TOKENS = 128     # F-16: hoechstens so viele Tokens im Protokoll (aelteste unregistrierte fallen heraus); Arbeitswert
 MAX_HANDLERS = 64  # gleichzeitig laufende Handler; darueber wird mit 503 abgewiesen (Arbeitswert, nicht aus Messungen)
 
 
@@ -309,7 +312,7 @@ class MediaServer:
         self.advertise_host = advertise_host
         self.entries: dict[str, _Entry] = {}
         self.streams: dict[str, _StreamEntry] = {}
-        self.request_log: list[dict] = []
+        self._log: "collections.OrderedDict[object, collections.deque]" = collections.OrderedDict()
         self._lock = threading.Lock()
         self._httpd: _Server | None = None
         self._thread: threading.Thread | None = None
@@ -348,10 +351,11 @@ class MediaServer:
         """Gibt (url, token) zurueck. Die URL endet auf den Dateinamen (manche Renderer lesen die Endung)."""
         path = Path(path)
         name = name or path.name
+        host = self._host()  # zuerst pruefen: bei ungueltigem advertise_host bleibt kein Eintrag zurueck (F-02)
         token = secrets.token_hex(12)
         with self._lock:
             self.entries[token] = _Entry(path, mime, name)
-        return f"http://{self._host()}:{self.port}/m/{token}/{urllib.parse.quote(name)}", token
+        return f"http://{host}:{self.port}/m/{token}/{urllib.parse.quote(name)}", token
 
     def unregister(self, token: str) -> None:
         with self._lock:
@@ -359,19 +363,40 @@ class MediaServer:
 
     def register_stream(self, opener: Callable[[], object], mime: str, name: str) -> tuple[str, str]:
         """Live-Stream registrieren. ``opener`` oeffnet die Quelle erst beim GET des Renderers."""
+        host = self._host()  # F-02: erst pruefen, dann eintragen
         token = secrets.token_hex(12)
         with self._lock:
             self.streams[token] = _StreamEntry(opener, mime, name)
-        return f"http://{self._host()}:{self.port}/s/{token}/{urllib.parse.quote(name)}", token
+        return f"http://{host}:{self.port}/s/{token}/{urllib.parse.quote(name)}", token
 
     def unregister_stream(self, token: str) -> None:
         with self._lock:
             self.streams.pop(token, None)
 
     def _log_request(self, rec: dict) -> None:
+        """Begrenztes Protokoll: je Token hoechstens MAX_LOG_PER_TOKEN Eintraege, insgesamt hoechstens MAX_LOG_TOKENS Tokens.
+
+        Anfragen mit erfundenen Tokens (404) koennen so nicht unbegrenzt Speicher belegen; registrierte Tokens bleiben erhalten.
+        """
+        token = rec.get("token")
         with self._lock:
-            self.request_log.append(rec)
+            bucket = self._log.get(token)
+            if bucket is None:
+                bucket = self._log[token] = collections.deque(maxlen=MAX_LOG_PER_TOKEN)
+                if len(self._log) > MAX_LOG_TOKENS:
+                    for old in list(self._log):
+                        if len(self._log) <= MAX_LOG_TOKENS:
+                            break
+                        if old != token and old not in self.entries and old not in self.streams:
+                            del self._log[old]
+            bucket.append(rec)
+
+    @property
+    def request_log(self) -> list[dict]:
+        """Alle noch vorhandenen Eintraege (Kopie, nach Token gruppiert; begrenzt)."""
+        with self._lock:
+            return [dict(r) for b in self._log.values() for r in b]
 
     def requests_for(self, token: str) -> list[dict]:
         with self._lock:
-            return [dict(r) for r in self.request_log if r["token"] == token]
+            return [dict(r) for r in self._log.get(token, ())]
