@@ -61,6 +61,7 @@ def test_renderer_loss_is_reported_with_previous_status(env):
     env[4].clear()
     env[0].stop()
     m.tick()
+    m.tick()  # Hysterese: erst der zweite aufeinanderfolgende Fehlschlag wird gemeldet
     ch = {c["component"]: c for c in _changes(env[4])}
     assert ch["renderer_http"]["previous"] == "ok" and ch["renderer_http"]["status"] == "error"
     assert ch["renderer_http"]["category"] in ("renderer_unreachable", "renderer_timeout")
@@ -75,6 +76,7 @@ def test_local_failure_is_reported(env):
     env[4].clear()
     env[1].stop()
     m.tick()
+    m.tick()  # Hysterese: erst der zweite aufeinanderfolgende Fehlschlag wird gemeldet
     ch = _changes(env[4])
     assert [c["component"] for c in ch] == ["media_server"] and ch[0]["status"] == "error"
 
@@ -446,6 +448,7 @@ def test_findings_from_health_error_and_event_timestamp(env):
     c, m = _collector(env)
     env[0].stop()
     m.tick()
+    m.tick()  # Hysterese: zweiter aufeinanderfolgender Fehlschlag
     f = [x for x in body(c, "/api/v1/diagnostics")["data"]["findings"] if x["code"].startswith("health_")]
     assert [x["code"] for x in f] == ["health_renderer_http"]
     assert f[0]["level"] == "error" and f[0]["category"] == "renderer" and f[0]["ts_source"] == "event"
@@ -483,12 +486,106 @@ def test_health_change_events_in_logs_with_category_level_and_scrubbed_text(env)
     m.tick()
     env[0].stop()
     m.tick()
+    m.tick()  # Hysterese: zweiter aufeinanderfolgender Fehlschlag
     evs = body(c, "/api/v1/logs", "limit=300&category=renderer")["data"]["events"]
     bad = [e for e in evs if e["event"] == "health_change" and e["status"] == "error"]
     assert bad and bad[0]["level"] == "error" and bad[0]["error"]
     ok = [e for e in body(c, "/api/v1/logs", "limit=300")["data"]["events"] if e["event"] == "health_change" and e["status"] == "ok"]
     assert ok and all(e["error"] is None for e in ok)
     assert "evidence" not in bad[0]  # Host/Pfade nie im Protokoll der API
+
+
+# ---- Hysterese (fail_threshold) ----
+
+def _repair_inputs(env):
+    return [c for c in _changes(env[4]) if c["status"] == "error"]
+
+
+def test_single_probe_failure_does_not_flip_to_error(env):
+    m = _mon(env)
+    m.tick()
+    env[4].clear()
+    env[1].stop()
+    m.tick()  # einzelner Ausreisser
+    assert _changes(env[4]) == []
+    snap = m.snapshot()
+    assert snap["overall"] == "ok" and snap["components"]["media_server"]["status"] == "ok"
+    assert snap["components"]["media_server"]["pending_failures"] == 1
+
+
+def test_consecutive_failures_trigger_exactly_one_change(env):
+    m = _mon(env)
+    m.tick()
+    env[4].clear()
+    env[1].stop()
+    m.tick()
+    m.tick()
+    m.tick()
+    ch = _changes(env[4])
+    assert len(ch) == 1 and ch[0]["component"] == "media_server"
+    assert ch[0]["status"] == "error" and ch[0]["previous"] == "ok"
+    assert m.snapshot()["overall"] == "error"
+
+
+def test_recovery_between_failures_resets_the_counter(env):
+    m = _mon(env)
+    m.tick()
+    env[4].clear()
+    m._update({"component": "cache", "status": "error", "category": "cache", "message": "x", "evidence": None,
+               "latency_ms": None, "ts": 1.0})
+    m.tick()  # cache wieder ok -> Zaehler zurueck
+    m._update({"component": "cache", "status": "error", "category": "cache", "message": "x", "evidence": None,
+               "latency_ms": None, "ts": 3.0})
+    assert _repair_inputs(env) == []  # zwei Ausreisser, aber nie in Folge
+
+
+def test_threshold_one_keeps_immediate_behaviour(env):
+    m = _mon(env, fail_threshold=1)
+    m.tick()
+    env[4].clear()
+    env[1].stop()
+    m.tick()
+    assert [c["component"] for c in _repair_inputs(env)] == ["media_server"]
+
+
+def test_threshold_three_needs_three_and_value_is_clamped(env):
+    m = _mon(env, fail_threshold=3)
+    m.tick()
+    env[4].clear()
+    env[1].stop()
+    m.tick()
+    m.tick()
+    assert _changes(env[4]) == []
+    m.tick()
+    assert len(_repair_inputs(env)) == 1
+    assert _mon(env, fail_threshold=0).fail_threshold == 1
+    assert _mon(env, fail_threshold=999).fail_threshold == health.MAX_FAIL_THRESHOLD
+
+
+def test_renderer_single_outlier_keeps_upnp_state_and_second_failure_flips(env):
+    m = _mon(env)
+    m.tick()
+    env[4].clear()
+    env[0].stop()
+    m.tick()
+    assert _changes(env[4]) == [] and m.snapshot()["overall"] == "ok"
+    m.tick()
+    ch = {c["component"]: c for c in _changes(env[4])}
+    assert ch["renderer_http"]["status"] == "error" and ch["renderer_http"]["previous"] == "ok"
+
+
+def test_first_observation_and_unknown_are_not_delayed(env):
+    env[1].stop()
+    m = _mon(env)
+    m.tick()  # kein Vorzustand: sofort melden
+    ch = {c["component"]: c for c in _changes(env[4])}
+    assert ch["media_server"]["status"] == "error" and ch["media_server"]["previous"] is None
+
+
+def test_cli_fail_threshold_option():
+    p = cli.build_parser()
+    assert p.parse_args(["play", "x.flac"]).health_fail_threshold == 2
+    assert p.parse_args(["play", "x.flac", "--health-fail-threshold", "1"]).health_fail_threshold == 1
 
 
 # ---- CLI ----

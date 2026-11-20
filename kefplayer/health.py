@@ -25,6 +25,11 @@ MIN_FREE_ERROR_MB = 50.0
 _RANK = {"ok": 0, "unknown": 1, "warn": 2, "error": 3}
 MIN_INTERVAL_S = 15.0      # Untergrenze: nie haeufiger als alle 15 s (Schutz der KEF vor Dauerabfragen)
 DEFAULT_INTERVAL_S = 30.0
+# Hysterese: so viele aufeinanderfolgende Fehlschlaege einer Pruefung noetig, bis ein bisher gesunder Zustand (ok/warn) als
+# "error" gemeldet wird (Ereignis health_change, Snapshot, Diagnose, Reparaturentscheidung). 1 = sofort (altes Verhalten).
+# Arbeitswert, nicht aus Messungen: bei 30 s Intervall wird ein echter Dauerausfall nach etwa 30 bis 60 s gemeldet.
+DEFAULT_FAIL_THRESHOLD = 2
+MAX_FAIL_THRESHOLD = 10
 
 
 def _result(component: str, status: str, category: str, message: str, t0: float | None = None, **evidence) -> dict:
@@ -134,11 +139,17 @@ class HealthMonitor:
       Lokale Pruefungen (Medienserver, Cache) laufen weiter.
     * Intervall mindestens ``MIN_INTERVAL_S``. Pruefungen sind nur lesend (GetTransportInfo, HTTP-GET).
     * Ein Fehler in einer Runde beendet den Thread nicht; er wird gezaehlt (``errors``) und im Snapshot gemeldet.
+    * Hysterese: ein einzelner Fehlschlag kippt einen gesunden Zustand nicht (``fail_threshold`` aufeinanderfolgende
+      Fehlschlaege noetig, Standard ``DEFAULT_FAIL_THRESHOLD``). Bis dahin bleibt der alte Zustand stehen, im Snapshot
+      steht ``pending_failures``. Jedes Ergebnis ausser "error" setzt den Zaehler zurueck. Ein erster Messwert (kein
+      Vorzustand) und ein Wechsel aus "unknown" werden sofort gemeldet; "warn"/"unknown" sind nie verzoegert.
     """
 
     def __init__(self, emit, *, info=None, server=None, cache_dir=None, busy=None, interval_s: float = DEFAULT_INTERVAL_S,
-                 timeout_s: float = 3.0, clock=time.monotonic):
+                 timeout_s: float = 3.0, clock=time.monotonic, fail_threshold: int = DEFAULT_FAIL_THRESHOLD):
         self._emit = emit
+        self.fail_threshold = min(MAX_FAIL_THRESHOLD, max(1, int(fail_threshold)))
+        self._fail_streak: dict[str, int] = {}
         self.info, self.server, self.cache_dir = info, server, cache_dir
         self._busy = busy or (lambda: False)
         self.interval_s = max(float(interval_s), MIN_INTERVAL_S)
@@ -171,11 +182,14 @@ class HealthMonitor:
                 paused = bool(self._busy())
                 if not paused:
                     http = check_renderer_http(self.info, self.timeout_s)
-                    if http["status"] == "error":
+                    if http["status"] == "error" and self._would_hold("renderer_http"):
+                        results.append(http)  # erster Ausreisser: UPnP-Zustand nicht zusaetzlich auf "unknown" kippen
+                    elif http["status"] == "error":
                         up = _result("renderer_upnp", "unknown", "upnp", "Uebersprungen: Renderer per HTTP nicht erreichbar.")
+                        results += [http, up]
                     else:
                         up = check_renderer_upnp(self.info, self.timeout_s)
-                    results += [http, up]
+                        results += [http, up]
             finally:
                 renderer_lock.release()
         if paused:
@@ -197,10 +211,23 @@ class HealthMonitor:
             self._last_tick_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
             self._renderer_paused = paused
 
+    def _would_hold(self, comp: str) -> bool:
+        """Wuerde der naechste Fehlschlag dieser Komponente noch zurueckgehalten (Hysterese)?"""
+        with self._lock:
+            prev = self._state.get(comp)
+            return (prev is not None and prev["status"] in ("ok", "warn")
+                    and self._fail_streak.get(comp, 0) + 1 < self.fail_threshold)
+
     def _update(self, r: dict) -> None:
         comp = r["component"]
         with self._lock:
             prev = self._state.get(comp)
+            streak = self._fail_streak.get(comp, 0) + 1 if r["status"] == "error" else 0
+            self._fail_streak[comp] = streak
+            if (r["status"] == "error" and prev is not None and prev["status"] in ("ok", "warn")
+                    and streak < self.fail_threshold):
+                self._state[comp] = {**prev, "pending_failures": streak}  # Zustand bleibt, Ausreisser nur vermerkt
+                return
             changed = prev is None or prev["status"] != r["status"]
             self._state[comp] = {**r, "since": r["ts"] if changed else prev["since"]}
         if changed:
