@@ -103,7 +103,7 @@ def _basename(p) -> str | None:
     return re.split(r"[\\/]", str(p).rstrip("\\/"))[-1] or None
 
 
-_RE_URL = re.compile(r"https?://[^\s'\"<>)\]]+", re.I)
+_RE_URL = re.compile(r"https?://(?:\[[^\]\s'\"<>]*\]|[^\s'\"<>)\]])+", re.I)  # IPv6-Klammern gehoeren zur URL
 _RE_QUOTED_PATH = re.compile(r"""(['"])(?:[A-Za-z]:[\\/]|/|\\\\)[^'"]*\1""")
 _RE_WIN_PATH = re.compile(r"""(?<![A-Za-z0-9])[A-Za-z]:[\\/]+[^\s'"<>|]*|\\\\[^\s'"<>|]+""")
 _RE_POSIX_PATH = re.compile(r"""(?<![\w:.\-])/[^\s'"<>|:]+""")
@@ -120,8 +120,17 @@ def scrub(text, details: bool = False, limit: int = 500) -> str:
     def url(m: re.Match) -> str:
         if not details:
             return "<url>"
-        parts = urllib.parse.urlsplit(m.group(0))
-        return f"{parts.scheme}://{parts.netloc}/<pfad entfernt>"
+        try:
+            parts = urllib.parse.urlsplit(m.group(0))
+            host, port = parts.hostname, parts.port
+        except ValueError:  # ungueltiger Port, kaputte IPv6-Klammern usw.: nichts davon uebernehmen
+            return "<url>"
+        if not host:
+            return "<url>"
+        if ":" in host:  # IPv6 wieder klammern
+            host = f"[{host}]"
+        # Benutzername und Passwort werden nie uebernommen (kein netloc)
+        return f"{parts.scheme}://{host}{f':{port}' if port is not None else ''}/<pfad entfernt>"
 
     s = _RE_URL.sub(url, s)
     if not details:
