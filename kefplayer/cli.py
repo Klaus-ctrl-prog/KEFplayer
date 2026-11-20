@@ -285,7 +285,8 @@ def cmd_play(args) -> int:
         from .health import HealthMonitor
 
         monitor = HealthMonitor(player.emit, info=renderer.info, server=server, cache_dir=args.cache_dir,
-                                busy=player.track_active.is_set, interval_s=args.health_interval)
+                                busy=player.track_active.is_set, interval_s=args.health_interval,
+                                fail_threshold=getattr(args, "health_fail_threshold", 2))
         if collector is not None:
             collector.set_health(monitor)
     if collector is not None:
@@ -301,7 +302,8 @@ def cmd_play(args) -> int:
 
         def _make_monitor():
             return HealthMonitor(player.emit, info=renderer.info, server=server, cache_dir=args.cache_dir,
-                                 busy=player.track_active.is_set, interval_s=args.health_interval)
+                                 busy=player.track_active.is_set, interval_s=args.health_interval,
+                                 fail_threshold=getattr(args, "health_fail_threshold", 2))
 
         def _on_swap(new):
             if collector is not None:
@@ -665,6 +667,9 @@ def build_parser() -> argparse.ArgumentParser:
                          "(haengenden Diagnose-Monitor neu starten), nie waehrend ein Titel spielt, mit Budget und Audit-Log")
     pl.add_argument("--health-interval", type=float, default=30.0,
                     help="Abstand der Gesundheitspruefung in Sekunden (Standard 30, mindestens 15)")
+    pl.add_argument("--health-fail-threshold", type=int, default=2, choices=range(1, 11), metavar="N",
+                    help="aufeinanderfolgende Fehlschlaege einer Pruefung, bis sie als Fehler gilt (Standard 2, 1 = sofort); "
+                         "ein einzelner Ausreisser loest weder Fehlerstatus noch Reparaturentscheidung aus")
     pl.add_argument("--api-live", action="store_true",
                     help="Position/Transportstatus per gedrosselter, nur lesender Renderer-Abfrage liefern "
                          "(zusaetzlicher Verkehr zur KEF; Standard: aus)")
