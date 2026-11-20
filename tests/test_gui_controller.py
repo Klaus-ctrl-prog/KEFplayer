@@ -442,3 +442,48 @@ def test_controller_does_not_import_tkinter_and_cli_does_not_import_gui():
     for code in (code1, code2):
         r = subprocess.run([sys.executable, "-I", "-c", code], cwd=root, capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
+
+
+# ---- F-07 (GUI): wie die CLI keine stillen Ueberschreibungen ----
+
+def test_process_gleiche_basisnamen_werden_vorab_abgelehnt(env, tone_factory, tmp_path):
+    import shutil
+    _, c, col = env()
+    src = tone_factory("x", seconds=0.2)
+    for d in ("a", "b"):
+        (tmp_path / d).mkdir()
+        shutil.copy(src, tmp_path / d / "song.flac")
+    c.add_paths([tmp_path / "a" / "song.flac", tmp_path / "b" / "song.flac"])
+    out = tmp_path / "out"
+    assert not c.process(str(out))
+    assert "gleicher Zielname" in col.of("error")[-1]["text"]
+    assert not out.exists() or not any(out.iterdir())
+    assert c.state == ctl.STATE_IDLE
+    assert c.process(str(out), numbered=True)  # mit Nummerierung eindeutig
+    assert col.wait_kind("process_done")
+    assert sorted(p.name for p in out.iterdir()) == ["000_song.flac", "001_song.flac"]
+
+
+def test_process_vorhandene_zieldatei_bleibt_ohne_overwrite(env, tone_factory, tmp_path):
+    _, c, col = env()
+    src = tone_factory("y", seconds=0.2)
+    c.add_paths([src])
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / f"{src.stem}.flac").write_bytes(b"ALT")
+    assert not c.process(str(out))
+    assert "existiert bereits" in col.of("error")[-1]["text"]
+    assert (out / f"{src.stem}.flac").read_bytes() == b"ALT"
+    assert c.process(str(out), overwrite=True)
+    assert col.wait_kind("process_done")
+    assert (out / f"{src.stem}.flac").read_bytes() != b"ALT"
+
+
+def test_process_quelle_gleich_ziel_wird_abgelehnt(env, tone_factory, tmp_path):
+    _, c, col = env()
+    src = tone_factory("z", seconds=0.2)
+    before = src.read_bytes()
+    c.add_paths([src])
+    assert not c.process(str(src.parent), overwrite=True)
+    assert "Quelldatei selbst" in col.of("error")[-1]["text"]
+    assert src.read_bytes() == before

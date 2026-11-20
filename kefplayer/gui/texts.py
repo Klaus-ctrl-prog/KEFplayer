@@ -24,6 +24,7 @@ REJECTED_HINT = (
 
 ERR_NO_DEVICE = "Kein Geraet gewaehlt. Zuerst ein Geraet suchen und auswaehlen."
 ERR_EMPTY_QUEUE = "Die Warteschlange enthaelt keine abspielbaren Dateien."
+ERR_PROCESS_TARGETS = "Nichts verarbeitet (Zieldateien wuerden kollidieren oder vorhandene ueberschreiben):"
 ERR_BUSY = "Es laeuft bereits ein Vorgang ({state})."
 ERR_SERVER = "Medienserver konnte nicht starten ({error}). Anderen Port waehlen."
 ERR_NOT_AUDIO = "Keine unterstuetzte Audiodatei: {name}"

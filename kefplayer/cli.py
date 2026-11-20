@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import threading
 import urllib.parse
@@ -135,34 +134,13 @@ def cmd_response(args) -> int:
     return 0
 
 
-def _process_target_problems(files, targets, *, overwrite: bool) -> list[str]:
-    """Vorabpruefung (F-07): eindeutige Zielnamen (ohne Gross-/Kleinschreibung, wie unter Windows), Quelle != Ziel,
-    vorhandene Zieldateien nur mit overwrite."""
-    problems, seen = [], {}
-    for f, t in zip(files, targets):
-        key = os.path.normcase(str(t.resolve() if t.parent.exists() else t)).casefold()
-        if key in seen:
-            problems.append(f"gleicher Zielname {t.name}: {seen[key]} und {f}")
-        else:
-            seen[key] = f
-        try:
-            same = t.exists() and os.path.samefile(f, t)
-        except OSError:
-            same = False
-        if same:
-            problems.append(f"Ziel ist die Quelldatei selbst: {f}")
-        elif t.exists() and not overwrite:
-            problems.append(f"Zieldatei existiert bereits: {t}")
-    return problems
-
-
 def cmd_process(args) -> int:
     files = collect_files(args.inputs)
     if not files:
         sys.exit("Keine Audiodateien gefunden")
     fmt = args.format or "flac"
     targets = [audio.output_path(f, args.out, fmt, f"{n:03d}_{f.stem}" if args.number else None) for n, f in enumerate(files)]
-    problems = _process_target_problems(files, targets, overwrite=args.overwrite)
+    problems = audio.process_target_problems(files, targets, overwrite=args.overwrite)
     if problems:
         sys.exit("Nichts verarbeitet:\n" + "\n".join(f"  {p}" for p in problems)
                  + "\nTipps: --number fuer eindeutige Namen, anderen --out-Ordner, oder --overwrite.")
