@@ -148,6 +148,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         media = self.server.media
         status, sent = 200, 0
         src = None
+        rec = self._begin_record("HEAD" if head else "GET", token, entry.name)  # F-1: ab Beginn sichtbar
         try:
             if not head:
                 try:
@@ -177,6 +178,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
                 sent += len(chunk)
+                rec["bytes_sent"] = sent
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
             pass  # Renderer oder Sender beendet die Verbindung
         finally:
@@ -185,11 +187,17 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                     src.close()
                 except Exception:  # noqa: BLE001
                     pass
-            media._log_request({
-                "ts": time.time(), "client": self.client_address[0], "method": "HEAD" if head else "GET",
-                "token": token, "name": entry.name, "range": self.headers.get("Range"),
-                "status": status, "bytes_sent": sent,
-            })
+            rec.update(status=status, bytes_sent=sent, active=False)
+
+    def _begin_record(self, method: str, token, name) -> dict:
+        """Eintrag beim Beginn der Anfrage anlegen (status None, active True); der Handler schliesst ihn im finally ab.
+
+        So sieht der Player (und die Diagnose) auch einen noch laufenden Abruf, nicht erst einen beendeten (F-1).
+        """
+        rec = {"ts": time.time(), "client": self.client_address[0], "method": method, "token": token, "name": name,
+               "range": self.headers.get("Range"), "status": None, "bytes_sent": 0, "active": True}
+        self.server.media._log_request(rec)
+        return rec
 
     def _entry(self):
         parts = urllib.parse.urlsplit(self.path).path.split("/")
@@ -205,6 +213,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         entry, token = self._entry()
         rng_header = self.headers.get("Range")
         status, sent = 404, 0
+        rec = self._begin_record("HEAD" if head else "GET", token, entry.name if entry else None)
         try:
             if entry is None or not entry.path.is_file():
                 body = b"not found"
@@ -248,22 +257,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                         break
                     self.wfile.write(chunk)
                     sent += len(chunk)
+                    rec["bytes_sent"] = sent
                     remaining -= len(chunk)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass  # Renderer schliesst Verbindungen gerne frueh
         finally:
-            media._log_request(
-                {
-                    "ts": time.time(),
-                    "client": self.client_address[0],
-                    "method": "HEAD" if head else "GET",
-                    "token": token,
-                    "name": entry.name if entry else None,
-                    "range": rng_header,
-                    "status": status,
-                    "bytes_sent": sent,
-                }
-            )
+            rec.update(status=status, bytes_sent=sent, active=False)
 
 
 class _Server(http.server.ThreadingHTTPServer):
